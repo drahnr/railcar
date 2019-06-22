@@ -1,4 +1,4 @@
-use errors::*;
+use crate::errors::*;
 use libc::c_int;
 use nix::sys::signal::{kill, raise, sigaction};
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal};

@@ -1,4 +1,4 @@
-use errors::*;
+use crate::errors::*;
 use oci::{Arch, LinuxSeccomp, LinuxSeccompOperator};
 use seccomp_sys::*;
 
@@ -10,7 +10,7 @@ fn to_cmp(cmp: LinuxSeccompOperator) -> scmp_compare {
     unsafe { ::std::mem::transmute(cmp) }
 }
 
-fn syscall_resolve_name(name: &str) -> ::Result<i32> {
+fn syscall_resolve_name(name: &str) -> crate::Result<i32> {
     let s = ::std::ffi::CString::new(name)?;
     let id = unsafe { seccomp_syscall_resolve_name(s.as_ptr()) };
     if id == __NR_SCMP_ERROR {
@@ -31,7 +31,7 @@ fn init(act: u32) -> Result<*mut scmp_filter_ctx> {
     }
 }
 
-fn arch_add(ctx: *mut scmp_filter_ctx, arch: scmp_arch) -> ::Result<i32> {
+fn arch_add(ctx: *mut scmp_filter_ctx, arch: scmp_arch) -> crate::Result<i32> {
     let id = unsafe { seccomp_arch_add(ctx, arch as u32) };
     if id == __NR_SCMP_ERROR {
         let msg = format!("could not add arch {:?}", arch);
@@ -87,7 +87,7 @@ fn load(ctx: *mut scmp_filter_ctx) -> Result<()> {
     }
 }
 
-pub fn initialize_seccomp(seccomp: &LinuxSeccomp) -> ::Result<()> {
+pub fn initialize_seccomp(seccomp: &LinuxSeccomp) -> crate::Result<()> {
     let ctx = init(seccomp.default_action as u32)?;
     // set control NoNewPrivs to false, as we deal with it separately
     attr_set(ctx, scmp_filter_attr::SCMP_FLTATR_CTL_NNP, false as u32)?;

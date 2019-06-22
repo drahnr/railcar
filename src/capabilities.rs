@@ -13,12 +13,12 @@ fn to_set(caps: &[LinuxCapabilityType]) -> CapsHashSet {
     capabilities
 }
 
-pub fn reset_effective() -> ::Result<()> {
+pub fn reset_effective() -> crate::Result<()> {
     set(None, CapSet::Effective, ::caps::all())?;
     Ok(())
 }
 
-pub fn drop_privileges(cs: &LinuxCapabilities) -> ::Result<()> {
+pub fn drop_privileges(cs: &LinuxCapabilities) -> crate::Result<()> {
     let all = ::caps::all();
     debug!("dropping bounding capabilities to {:?}", cs.bounding);
     // drop excluded caps from the bounding set

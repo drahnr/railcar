@@ -35,7 +35,7 @@ mod signals;
 mod sync;
 
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
-use errors::*;
+use crate::errors::*;
 use lazy_static::initialize;
 use nix::errno::Errno;
 use nix::fcntl::{open, OFlag};
@@ -51,7 +51,7 @@ use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{chdir, execvp, getpid, sethostname, setresgid, setresuid};
 use nix::unistd::{close, dup2, fork, pipe2, read, setsid, write, ForkResult};
 use nix::unistd::{Gid, Pid, Uid};
-use nix_ext::{clearenv, putenv, setgroups, setrlimit};
+use crate::nix_ext::{clearenv, putenv, setgroups, setrlimit};
 use oci::{Linux, LinuxIDMapping, LinuxRlimit, Spec};
 use oci::{LinuxDevice, LinuxDeviceType};
 use std::collections::HashMap;
@@ -61,7 +61,7 @@ use std::io::{Read, Write};
 use std::os::unix::fs::symlink;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::result::Result as StdResult;
-use sync::Cond;
+use crate::sync::Cond;
 
 lazy_static! {
     static ref DEFAULT_DEVICES: Vec<LinuxDevice> = {
