@@ -2,6 +2,7 @@
 #![recursion_limit = "1024"]
 #![cfg_attr(feature = "nightly", feature(start))]
 #![cfg_attr(feature = "nightly", feature(alloc_system))]
+#![cfg_attr(feature = "nightly", feature(ord_max_min))]
 #[cfg(feature = "nightly")]
 extern crate alloc_system;
 
