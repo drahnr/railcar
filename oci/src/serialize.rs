@@ -29,7 +29,7 @@ impl Error for SerializeError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             SerializeError::Io(ref err) => Some(err),
             SerializeError::Json(ref err) => Some(err),
