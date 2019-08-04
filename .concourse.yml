@@ -1,0 +1,544 @@
+resource_types:
+- name: pull-request
+  type: docker-image
+  source:
+    repository: jtarchie/pr
+
+resources:
+- name: git-clone-resource
+  type: git
+  source:
+    branch: master
+    uri: https://github.com/drahnr/scalpel.git
+
+# - name: github-release
+#   type: github-release
+#   source:
+#     owner: drahnr
+#     access_token: ((sirmergealot-github-token))
+#     repository:  railcar
+
+# - name: git-tag-resource
+#   type: git
+#   source:
+#     tag_filter: "v[0-9]*"
+#     branch: master
+#     uri: https://github.com/drahnr/railcar.git
+
+- name: git-pull-request-resource
+  type: pull-request
+  source:
+    repo: drahnr/railcar
+    access_token: ((sirmergealot-github-token))
+
+
+- name: bucket-libseccomp
+  type: s3
+  source:
+    endpoint: https://minio.spearow.io
+    bucket: railcar-libseccomp
+    regexp: (.*).a
+    access_key_id: {{minio-access-key}}
+    secret_access_key: {{minio-secret-key}}
+
+
+- name: bucket-pr-libseccomp
+  type: s3
+  source:
+    endpoint: https://minio.spearow.io
+    bucket: railcar-pr-libseccomp
+    regexp: (.*).a
+    access_key_id: {{minio-access-key}}
+    secret_access_key: {{minio-secret-key}}
+
+- name: env-musl
+  type: docker-image
+  source:
+    repository: ekidd/rust-musl-builder
+    max_concurrent_downloads: 2
+    max_concurrent_uploads: 2
+
+- name: env-glibc
+  type: docker-image
+  source:
+    repository: rust
+    max_concurrent_downloads: 2
+    max_concurrent_uploads: 2
+
+- name: env-cxx
+  type: docker-image
+  source:
+    repository: rust
+    max_concurrent_downloads: 2
+    max_concurrent_uploads: 2
+
+#- name: gh-release
+#  type: github-release
+#  source:
+#    owner: drahnr
+#    repository: railcar
+#    access_token: ((drahnr-github-token))
+
+jobs:
+  - name: libseccomp
+    build_logs_to_retain: 5
+    public: true
+    serial: true
+    plan:
+    - get: env-cxx
+    - get: git-pull-request-resource
+      resource: git-pull-request-resource
+      trigger: true
+      
+    - task: build-libseccomp
+      timeout: 30m
+      image: env-cxx
+      config:
+        platform: linux
+        inputs:
+        - name: git-pull-request-resource
+        outputs:
+        - name: bucket-libseccomp
+        run:
+          path: sh
+          args:
+          - -exc
+          - |
+            git submodule update --init
+            ./buildsh_seccomp.sh
+
+    - put: bucket-libseccomp
+      params:
+        file: libseccomp.a
+        acl: public
+
+  - name: pr-libseccomp
+    build_logs_to_retain: 5
+    public: true
+    serial: true
+    plan:
+    - get: env-cxx
+    - get: git-pull-request-resource
+      resource: git-pull-request-resource
+      trigger: true
+     
+    - task: build-libseccomp
+      timeout: 30m
+      image: env-cxx
+      config:
+        platform: linux
+        inputs:
+        - name: git-pull-request-resource
+        outputs:
+        - name: bucket-pr-libseccomp
+        run:
+          path: sh
+          args:
+          - -exc
+          - |
+            git submodule update --init
+            ./buildsh_seccomp.sh
+  
+    - put: bucket-pr-libseccomp
+      params:
+        file: libseccomp.a
+        acl: public
+          
+
+  - name: pr-validate
+    build_logs_to_retain: 10
+    public: true
+    serial: true
+    plan:
+    - get: env-glibc
+    - get: env-musl
+
+    - get: bucket-pr-libseccomp
+      passed: [pr-libseccomp]
+      resource: bucket-pr-libseccomp
+
+    - get: git-pull-request-resource
+      resource: git-pull-request-resource
+      trigger: true
+
+    - in_parallel:
+
+      - task: pr-validate-musl-nightly
+        timeout: 15m
+        image: env-musl
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +nightly b --features=nightly
+              cargo +nightly t --features=nightly
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+      - task: pr-validate-glibc-nightly
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +nightly b --features=nightly
+              cargo +nightly t --features=nightly
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+      - task: pr-validate-musl-beta
+        timeout: 15m
+        image: env-musl
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +beta b
+              cargo +beta t
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+      - task: pr-validate-glibc-beta
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +beta b
+              cargo +beta t
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+      - task: pr-validate-musl-stable
+        timeout: 15m
+        image: env-musl
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +stable b
+              cargo +stable t
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+      - task: pr-validate-glibc-stable
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +stable b
+              cargo +stable t
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+        on_success:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: compile
+            status: success
+
+        on_failure:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: compile
+            status: failure
+
+      - task: format-check
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-pull-request-resource
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              rustup component add rustfmt-preview
+              cargo fmt -- --check
+            dir: git-pull-request-resource
+          caches:
+          - path: cargo
+
+        on_success:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: format-check
+            status: success
+
+        on_failure:
+          put: git-pull-request-resource
+          params:
+            path: git-pull-request-resource
+            context: format-check
+            status: failure
+
+  - name: master-validate
+    build_logs_to_retain: 10
+    public: true
+    serial: true
+    plan:
+    - get: bucket-libseccomp
+      passed: [libseccomp]
+    - get: env-musl
+    - get: env-glibc
+    - get: git-repo
+      resource: git-clone-resource
+      trigger: true
+
+    - in_parallel:
+      - task: validate-glibc-stable
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-repo
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +stable b
+              cargo +stable t
+            dir: git-repo
+          caches:
+          - path: cargo
+
+      - task: validate-glibc-beta
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-repo
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +beta b
+              cargo +beta t
+            dir: git-repo
+          caches:
+          - path: cargo
+
+      - task: validate-glibc-nightly
+        timeout: 15m
+        image: env-glibc
+        config:
+          platform: linux
+          inputs:
+          - name: git-repo
+          run:
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +nightly b --features=nightly
+              cargo +nightly t --features=nightly
+            dir: git-repo
+          caches:
+          - path: cargo
+
+      - task: validate-musl-stable
+        timeout: 15m
+        image: env-musl
+        config:
+          platform: linux
+          inputs:
+          - name: git-repo
+          run:
+            user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +stable b
+              cargo +stable t
+            dir: git-repo
+          caches:
+          - path: cargo
+
+      - task: validate-musl-beta
+        timeout: 15m
+        image: env-musl
+        config:
+          platform: linux
+          inputs:
+          - name: git-repo
+          run:
+            user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +beta b
+              cargo +beta t
+            dir: git-repo
+          caches:
+          - path: cargo
+
+      - task: validate-musl-nightly
+        timeout: 15m
+        image: env-musl
+        config:
+          platform: linux
+          inputs:
+          - name: git-repo
+          run:
+            user: root
+            path: sh
+            args:
+            - -exc
+            - |
+              export CARGO_HOME="$(pwd)/../cargo"
+              rustc --version --verbose
+              cargo +nightly b --features=nightly
+              cargo +nightly t --features=nightly
+            dir: git-repo
+          caches:
+          - path: cargo
+
+
+  # - name: publish-github-release
+  #   build_logs_to_retain: 5
+  #   public: false
+  #   serial: true
+  #   plan:
+  #   - get: env-glibc
+  #   - get: git-repo
+  #     resource: git-tag-resource
+  #     trigger: true
+
+  #   - task: create-github-release
+  #     timeout: 15m
+  #     image: env-glibc
+  #     config:
+  #       platform: linux
+  #       inputs:
+  #       - name: git-repo
+  #       outputs:
+  #       - name: release-info
+  #       caches:
+  #       - path: cargo
+  #       run:
+  #         path: sh
+  #         args:
+  #           - -exc
+  #           - |
+  #             export CARGO_HOME="$(pwd)/cargo"
+
+  #             mkdir -p "../release-info"
+  #             export RI_BASE_DIR="../release-info"
+  #             export RI_ARTIFACTS_DIR="${RI_BASE_DIR}/artifacts"
+  #             mkdir -p "${RI_ARTIFACTS_DIR}"
+  #             export RI_TAG_FILE="${RI_BASE_DIR}/TAG"
+  #             export RI_COMMITISH_FILE="${RI_BASE_DIR}/COMMITISH"
+  #             export RI_NAME_FILE="${RI_BASE_DIR}/NAME"
+
+  #             git rev-parse HEAD > "${RI_COMMITISH_FILE}"
+  #             #git log -n 1 --format="%h" HEAD > "../${RI_COMMITISH_FILE}"
+  #             cat "${RI_COMMITISH_FILE}"
+
+  #             # the v-prefixed version
+  #             cat ./.git/ref > "${RI_TAG_FILE}"
+  #             cat "${RI_TAG_FILE}"
+
+  #             # construct scalpel-v1.2.3
+  #             echo "scalpel-$(cat ./.git/ref)" > "${RI_NAME_FILE}"
+  #             cat "${RI_NAME_FILE}"
+
+  #             # TODO cross compile to windows
+  #             # $ cargo build --release --target x86_64-pc-windows-gnu
+  #             # using the fedora provided precompiled static libs
+  #             # and publish target/x86_64-pc-windows-gnu/release/scalpel.exe
+  #             # TODO build for more OSes, such as fuchsia and BSD platforms
+  #             mkdir -pv "${RI_ARTIFACTS_DIR}"
+  #             for TARGET in x86_64-unknown-linux-gnu ; do
+  #               echo "Prepping ${TARGET} ..."
+  #               cargo build --release --target "${TARGET}" && \
+  #               cp -vf "target/${TARGET}/release/scalpel" "${RI_ARTIFACTS_DIR}/scalpel-${TARGET}"
+  #               echo "Prepped ${TARGET} ."
+  #               echo ""
+  #             done
+  #         dir: git-repo
+
+  #   - put: github-release
+  #     params:
+  #       name: release-info/NAME
+  #       tag: release-info/TAG
+  #       commitish: release-info/COMMITISH
+  #       globs:
+  #       - release-info/artifacts/*
