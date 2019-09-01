@@ -110,7 +110,7 @@ RUN echo "Building libgit" && \
     tar xzf "v${LIBGIT2_VERSION}.tar.gz" && cd "./libgit2-${LIBGIT2_VERSION}/" && \
     mkdir build && cd build && \
     cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DBUILD_CLAR=OFF -DCMAKE_INSTALL_PREFIX=/usr/local/ .. && \
-    cmake --build . --target install
+    sudo cmake --build . --target install
 
 ENV OPENSSL_DIR=/usr/local/ \
     OPENSSL_INCLUDE_DIR=/usr/local/include/ \

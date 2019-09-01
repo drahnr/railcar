@@ -153,6 +153,9 @@ jobs:
       resource: git-clone-resource-ci-rust-musl-env
       trigger: true
 
+    - get: fedora
+      params: { save: true }
+
     - task: cpycat
       timeout: 30m
       image: fedora
