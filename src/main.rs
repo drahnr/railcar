@@ -40,7 +40,7 @@ use crate::errors::*;
 use lazy_static::initialize;
 use nix::errno::Errno;
 use nix::fcntl::{open, OFlag};
-use nix::poll::{poll, EventFlags, PollFd};
+use nix::poll::{poll, PollFlags, PollFd};
 use nix::sched::{setns, unshare, CloneFlags};
 use nix::sys::signal::{SigSet, Signal};
 use nix::sys::socket::{accept, bind, connect, listen, sendmsg, socket};
@@ -1202,8 +1202,8 @@ fn run_container(
     }
 
     if csocketfd != -1 {
-        let mut slave: libc::c_int = unsafe { std::mem::uninitialized() };
-        let mut master: libc::c_int = unsafe { std::mem::uninitialized() };
+        let mut slave: libc::c_int = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+        let mut master: libc::c_int = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
         let ret = unsafe {
             libc::openpty(
                 &mut master,
@@ -1344,7 +1344,7 @@ fn fork_first(
 
             // set rlimits (before entering user ns)
             for rlimit in rlimits.iter() {
-                setrlimit(rlimit.typ as i32, rlimit.soft, rlimit.hard)?;
+                setrlimit(rlimit.typ as u32, rlimit.soft, rlimit.hard)?;
             }
 
             if userns {
@@ -1598,7 +1598,7 @@ fn wait_for_pipe_vec(
     let mut result = Vec::new();
     while result.len() < num {
         let pfds =
-            &mut [PollFd::new(rfd, EventFlags::POLLIN | EventFlags::POLLHUP)];
+            &mut [PollFd::new(rfd, PollFlags::POLLIN | PollFlags::POLLHUP)];
         match poll(pfds, timeout) {
             Err(e) => {
                 if e != ::nix::Error::Sys(Errno::EINTR) {
@@ -1617,13 +1617,13 @@ fn wait_for_pipe_vec(
             // continue on no events
             continue;
         }
-        if events.unwrap() == EventFlags::POLLNVAL {
+        if events.unwrap() == PollFlags::POLLNVAL {
             let msg = "file descriptor closed unexpectedly".to_string();
             return Err(ErrorKind::PipeClosed(msg).into());
         }
         if !events
             .unwrap()
-            .intersects(EventFlags::POLLIN | EventFlags::POLLHUP)
+            .intersects(PollFlags::POLLIN | PollFlags::POLLHUP)
         {
             // continue on other events (should not happen)
             debug!("got a continue on other events {:?}", events);

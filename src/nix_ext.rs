@@ -39,7 +39,7 @@ pub fn setgroups(gids: &[libc::gid_t]) -> Result<()> {
 
 #[inline]
 pub fn setrlimit(
-    resource: libc::c_int,
+    resource: libc::c_uint,
     soft: libc::c_ulonglong,
     hard: libc::c_ulonglong,
 ) -> Result<()> {
@@ -60,7 +60,7 @@ pub fn clearenv() -> Result<()> {
 #[cfg(target_env = "gnu")]
 #[inline]
 pub fn putenv(string: &CString) -> Result<()> {
-    // NOTE: gnue takes ownership of the string so we pass it
+    // NOTE: gnu takes ownership of the string so we pass it
     //       with into_raw.
     //       This prevents the string to be de-allocated.
     //       According to
