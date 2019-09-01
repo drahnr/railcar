@@ -1,0 +1,12 @@
+
+FROM ekidd/rust-musl-builder
+
+MAINTAINER Bernhard Schuster "bernhard@ahoi.io"
+
+USER root
+
+RUN apt-get update -y && apt-get install -y autoconf automake libtool
+
+USER rust
+
+ENV CMAKE_MAKE_PROGRAM=make

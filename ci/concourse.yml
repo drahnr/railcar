@@ -19,6 +19,13 @@ resources:
     uri: https://github.com/drahnr/railcar.git
     paths: [ ci/Dockerfile.rustglibc ]
 
+- name: git-clone-resource-ci-rust-musl-env
+  type: git
+  source:
+    branch: master
+    uri: https://github.com/drahnr/railcar.git
+    paths: [ ci/Dockerfile.rustmusl ]
+
 - name: git-clone-resource-ci-cxx-env
   type: git
   source:
@@ -69,7 +76,9 @@ resources:
 - name: env-musl
   type: docker-image
   source:
-    repository: ekidd/rust-musl-builder
+    repository: quay.io/drahnr/rust-musl-builder
+    username: ((quay-drahnr-username))
+    password: ((quay-drahnr-password))
     max_concurrent_downloads: 2
     max_concurrent_uploads: 2
 
@@ -118,7 +127,54 @@ resources:
 #    repository: railcar
 #    access_token: ((drahnr-github-token))
 
+
+groups:
+- name: master
+  jobs:
+  - master-validate
+
+- name: pull-request
+  jobs:
+  - pr-validate
+
+- name: oci
+  jobs:
+  - create-rust-musl-env
+  - create-rust-glibc-env
+  - create-cxx-env
+
 jobs:
+  - name: create-rust-musl-env
+    build_logs_to_retain: 5
+    public: true
+    serial: true
+    plan:
+    - get: git-clone-resource-ci
+      resource: git-clone-resource-ci-rust-musl-env
+      trigger: true
+
+    - task: cpycat
+      timeout: 30m
+      image: fedora
+      config:
+        platform: linux
+        inputs:
+        - name: git-clone-resource-ci
+        outputs:
+        - name: copycat
+        run:
+          path: sh
+          args:
+          - -exc
+          - |
+            cp -rfv ci/Dockerfile.rustmusl ../copycat/Dockerfile
+          dir: git-clone-resource-ci
+
+    - put: env-musl
+      params:
+        build: copycat
+        tag_as_latest: true
+
   - name: create-rust-glibc-env
     build_logs_to_retain: 5
     public: true
