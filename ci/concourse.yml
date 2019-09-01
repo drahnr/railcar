@@ -306,7 +306,7 @@ jobs:
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown -Rf sirmergealot "${CARGO_HOME}"
               sudo chown -Rf sirmergealot "$(pwd)"
-              rustc --version --verbose
+              rustc +nightly --version --verbose
               cargo +nightly b --features=nightly
               cargo +nightly t --features=nightly
             dir: git-repo
@@ -330,7 +330,7 @@ jobs:
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown -Rf sirmergealot "${CARGO_HOME}"
               sudo chown -Rf sirmergealot "$(pwd)"
-              rustc --version --verbose
+              rustc +beta --version --verbose
               cargo +beta b
               cargo +beta t
             dir: git-repo
@@ -354,7 +354,7 @@ jobs:
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown -Rf sirmergealot "${CARGO_HOME}"
               sudo chown -Rf sirmergealot "$(pwd)"
-              rustc --version --verbose
+              rustc +stable --version --verbose
               cargo +stable b
               cargo +stable t
             dir: git-repo
@@ -377,7 +377,7 @@ jobs:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
+              rustc +nightly --version --verbose
               cargo +nightly b --features=nightly --target x86_64-unknown-linux-musl
               cargo +nightly t --features=nightly --target x86_64-unknown-linux-musl
             dir: git-repo
@@ -399,7 +399,7 @@ jobs:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
+              rustc +beta --version --verbose
               cargo +beta b --target x86_64-unknown-linux-musl
               cargo +beta t --target x86_64-unknown-linux-musl
             dir: git-repo
@@ -422,7 +422,7 @@ jobs:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
+              rustc +stable --target x86_64-unknown-linux-musl --version --verbose
               cargo +stable b --target x86_64-unknown-linux-musl
               cargo +stable t --target x86_64-unknown-linux-musl
             dir: git-repo
@@ -459,7 +459,6 @@ jobs:
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown -Rf sirmergealot "${CARGO_HOME}"
               sudo chown -Rf sirmergealot "$(pwd)"
-              rustc --version --verbose
               rustup component add rustfmt-preview
               cargo fmt -- --check
             dir: git-repo
@@ -537,7 +536,7 @@ jobs:
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown -Rf sirmergealot "${CARGO_HOME}"
               sudo chown -Rf sirmergealot "$(pwd)"
-              rustc --version --verbose
+              rustc +stable --version --verbose
               cargo +stable b
               cargo +stable t
             dir: git-repo
@@ -561,7 +560,7 @@ jobs:
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown -Rf sirmergealot "${CARGO_HOME}"
               sudo chown -Rf sirmergealot "$(pwd)"
-              rustc --version --verbose
+              rustc +beta --version --verbose
               cargo +beta b
               cargo +beta t
             dir: git-repo
@@ -585,7 +584,7 @@ jobs:
               export CARGO_HOME="$(pwd)/../cargo"
               sudo chown -Rf sirmergealot "${CARGO_HOME}"
               sudo chown -Rf sirmergealot "$(pwd)"
-              rustc --version --verbose
+              rustc +nightly --version --verbose
               cargo +nightly b --features=nightly
               cargo +nightly t --features=nightly
             dir: git-repo
@@ -608,7 +607,7 @@ jobs:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
+              rustc +stable --target x86_64-unknown-linux-musl --version --verbose
               cargo +stable b --target x86_64-unknown-linux-musl
               cargo +stable t --target x86_64-unknown-linux-musl
             dir: git-repo
@@ -630,7 +629,7 @@ jobs:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
+              rustc +beta --target x86_64-unknown-linux-musl --version --verbose
               cargo +beta b --target x86_64-unknown-linux-musl
               cargo +beta t --target x86_64-unknown-linux-musl
             dir: git-repo
@@ -652,7 +651,7 @@ jobs:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
-              rustc --version --verbose
+              rustc +nightly --target x86_64-unknown-linux-musl --version --verbose
               cargo +nightly b --features=nightly --target x86_64-unknown-linux-musl
               cargo +nightly t --features=nightly --target x86_64-unknown-linux-musl
             dir: git-repo

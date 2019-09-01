@@ -9,4 +9,9 @@ RUN apt-get update -y && apt-get install -y autoconf automake libtool
 
 USER rust
 
+RUN rustup toolchain install \
+        stable-x86_64-unknown-linux-musl \
+        beta-x86_64-unknown-linux-musl \
+        nightly-x86_64-unknown-linux-musl
+
 ENV CMAKE_MAKE_PROGRAM=make
