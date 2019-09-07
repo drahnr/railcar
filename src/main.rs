@@ -63,8 +63,8 @@ use crate::sync::Cond;
 
 lazy_static! {
     static ref DEFAULT_DEVICES: Vec<LinuxDevice> = {
-        let mut v = Vec::new();
-        v.push(LinuxDevice {
+        let v = vec![
+        LinuxDevice {
             path: "/dev/null".to_string(),
             typ: LinuxDeviceType::c,
             major: 1,
@@ -72,8 +72,8 @@ lazy_static! {
             file_mode: Some(0o066),
             uid: None,
             gid: None,
-        });
-        v.push(LinuxDevice {
+        },
+        LinuxDevice {
             path: "/dev/zero".to_string(),
             typ: LinuxDeviceType::c,
             major: 1,
@@ -81,8 +81,8 @@ lazy_static! {
             file_mode: Some(0o066),
             uid: None,
             gid: None,
-        });
-        v.push(LinuxDevice {
+        },
+        LinuxDevice {
             path: "/dev/full".to_string(),
             typ: LinuxDeviceType::c,
             major: 1,
@@ -90,8 +90,8 @@ lazy_static! {
             file_mode: Some(0o066),
             uid: None,
             gid: None,
-        });
-        v.push(LinuxDevice {
+        },
+        LinuxDevice {
             path: "/dev/tty".to_string(),
             typ: LinuxDeviceType::c,
             major: 5,
@@ -99,8 +99,8 @@ lazy_static! {
             file_mode: Some(0o066),
             uid: None,
             gid: None,
-        });
-        v.push(LinuxDevice {
+        },
+        LinuxDevice {
             path: "/dev/urandom".to_string(),
             typ: LinuxDeviceType::c,
             major: 1,
@@ -108,8 +108,8 @@ lazy_static! {
             file_mode: Some(0o066),
             uid: None,
             gid: None,
-        });
-        v.push(LinuxDevice {
+        },
+        LinuxDevice {
             path: "/dev/random".to_string(),
             typ: LinuxDeviceType::c,
             major: 1,
@@ -117,7 +117,7 @@ lazy_static! {
             file_mode: Some(0o066),
             uid: None,
             gid: None,
-        });
+        }];
         v
     };
 }
