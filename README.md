@@ -16,7 +16,7 @@ Rust](https://blogs.oracle.com/developers/building-a-container-runtime-in-rust)
 
 ## Building `railcar` ##
 
-[![wercker status](https://app.wercker.com/status/730e874772dc02c6005f4ae4e42b0ca4/s/master "wercker status")](https://app.wercker.com/project/byKey/730e874772dc02c6005f4ae4e42b0ca4)
+[![concourse ci status](https://ci.spearow.io/api/v1/teams/main/pipelines/railcar/jobs/master-validate/badge)](https://ci.spearow.io/teams/main/pipelines/railcar)
 
 Install rust:
 
