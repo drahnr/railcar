@@ -4,6 +4,7 @@ use nix::errno::Errno;
 use nix::Result;
 use std::ffi::CString;
 use std::os::unix::io::RawFd;
+use std::convert::TryInto;
 
 #[inline]
 pub fn lsetxattr(
@@ -47,6 +48,7 @@ pub fn setrlimit(
         rlim_cur: soft,
         rlim_max: hard,
     };
+    let resource = resource.try_into().unwrap();
     let res = unsafe { libc::setrlimit(resource, rlim) };
     Errno::result(res).map(drop)
 }
