@@ -5,7 +5,7 @@ MAINTAINER Bernhard Schuster "bernhard@ahoi.io"
 
 USER root
 
-RUN apt-get update -y && apt-get install -y autoconf automake libtool
+RUN apt-get update -y && apt-get install -y autoconf automake libtool sed && ln -s /bin/sed /usr/bin/sed && rm -rf /var/cache
 
 USER rust
 
