@@ -4,7 +4,17 @@ resource_types:
   source:
     repository: jtarchie/pr
 
+
 resources:
+- name: daily
+  type: time
+  icon: clock-outline
+  source:
+    location: Europe/Berlin
+    interval: 24h
+    start: 3:00 AM
+    stop: 5:00 PM
+
 - name: git-clone-resource
   type: git
   source:
@@ -149,6 +159,8 @@ jobs:
     public: true
     serial: true
     plan:
+    - get: daily
+      trigger: true
     - get: git-clone-resource-ci
       resource: git-clone-resource-ci-rust-musl-env
       trigger: true
@@ -183,6 +195,9 @@ jobs:
     public: true
     serial: true
     plan:
+    - get: daily
+      trigger: true
+
     - get: git-clone-resource-ci
       resource: git-clone-resource-ci-rust-glibc-env
       trigger: true
@@ -218,6 +233,9 @@ jobs:
     public: true
     serial: true
     plan:
+    - get: daily
+      trigger: true
+
     - get: git-clone-resource-ci
       resource: git-clone-resource-ci-cxx-env
       trigger: true
