@@ -40,7 +40,7 @@ resources:
   type: pull-request
   icon: circle-github
   source:
-    repo: drahnr/railcar
+    repository: drahnr/railcar
     access_token: ((sirmergealot-github-token))
 
 # - name: bucket-libseccomp
