@@ -1,9 +1,8 @@
 resource_types:
 - name: pull-request
-  type: docker-image
+  type: registry-image
   source:
-    repository: jtarchie/pr
-
+    repository: teliaoss/github-pr-resource
 
 resources:
 - name: daily
@@ -21,27 +20,6 @@ resources:
     branch: master
     uri: https://github.com/drahnr/railcar.git
     ignore_paths: [ ci/* ]
-
-- name: git-clone-resource-ci-rust-glibc-env
-  type: git
-  source:
-    branch: master
-    uri: https://github.com/drahnr/railcar.git
-    paths: [ ci/Dockerfile.rustglibc ]
-
-- name: git-clone-resource-ci-rust-musl-env
-  type: git
-  source:
-    branch: master
-    uri: https://github.com/drahnr/railcar.git
-    paths: [ ci/Dockerfile.rustmusl ]
-
-- name: git-clone-resource-ci-cxx-env
-  type: git
-  source:
-    branch: master
-    uri: https://github.com/drahnr/railcar.git
-    paths: [ ci/Dockerfile.cxxenv ]
 
 # - name: github-release
 #   type: github-release
@@ -63,7 +41,6 @@ resources:
     repo: drahnr/railcar
     access_token: ((sirmergealot-github-token))
 
-
 # - name: bucket-libseccomp
 #   type: s3
 #   source:
@@ -84,50 +61,27 @@ resources:
 #     secret_access_key: {{minio-secret-key}}
 
 - name: env-musl
-  type: docker-image
+  type: registry-image
   source:
     repository: quay.io/drahnr/rust-musl-builder
     username: ((quay-drahnr-username))
     password: ((quay-drahnr-password))
-    max_concurrent_downloads: 2
-    max_concurrent_uploads: 2
-
 
 - name: env-glibc
-  type: docker-image
+  type: registry-image
   source:
     tag: latest
     repository: quay.io/drahnr/rust-glibc-builder
     username: ((quay-drahnr-username))
     password: ((quay-drahnr-password))
-    max_concurrent_downloads: 2
-    max_concurrent_uploads: 2
 
-- name: alpine
-  type: docker-image
-  source:
-    tag: edge
-    repository: alpine
-    max_concurrent_downloads: 2
-    max_concurrent_uploads: 2
-
-- name: fedora
-  type: docker-image
+- name: env-cxx
+  type: registry-image
   source:
     tag: latest
-    repository: fedora
-    max_concurrent_downloads: 2
-    max_concurrent_uploads: 2
-
-- name: container-cxx-env
-  type: docker-image
-  source:
-    tag: latest
-    repository: quay.io/drahnr/container-cxx-env
+    repository: quay.io/drahnr/env-cxx
     username: ((quay-drahnr-username))
     password: ((quay-drahnr-password))
-    max_concurrent_downloads: 2
-    max_concurrent_uploads: 2
 
 
 #- name: gh-release
@@ -147,125 +101,7 @@ groups:
   jobs:
   - pr-validate
 
-- name: oci
-  jobs:
-  - create-rust-musl-env
-  - create-rust-glibc-env
-  - create-cxx-env
-
 jobs:
-  - name: create-rust-musl-env
-    build_logs_to_retain: 5
-    public: true
-    serial: true
-    plan:
-    - get: daily
-      trigger: true
-    - get: git-clone-resource-ci
-      resource: git-clone-resource-ci-rust-musl-env
-      trigger: true
-
-    - get: fedora
-      params: { save: true }
-
-    - task: cpycat
-      timeout: 30m
-      image: fedora
-      config:
-        platform: linux
-        inputs:
-        - name: git-clone-resource-ci
-        outputs:
-        - name: copycat
-        run:
-          path: sh
-          args:
-          - -exc
-          - |
-            cp -rfv ci/Dockerfile.rustmusl ../copycat/Dockerfile
-          dir: git-clone-resource-ci
-
-    - put: env-musl
-      params:
-        build: copycat
-        tag_as_latest: true
-
-  - name: create-rust-glibc-env
-    build_logs_to_retain: 5
-    public: true
-    serial: true
-    plan:
-    - get: daily
-      trigger: true
-
-    - get: git-clone-resource-ci
-      resource: git-clone-resource-ci-rust-glibc-env
-      trigger: true
-
-    - get: fedora
-      params: { save: true }
-
-    - task: cpycat
-      timeout: 30m
-      image: fedora
-      config:
-        platform: linux
-        inputs:
-        - name: git-clone-resource-ci
-        outputs:
-        - name: copycat
-        run:
-          path: sh
-          args:
-          - -exc
-          - |
-            cp -rfv ci/Dockerfile.rustglibc ../copycat/Dockerfile
-          dir: git-clone-resource-ci
-
-    - put: env-glibc
-      params:
-        load_base: fedora
-        build: copycat
-        tag_as_latest: true
-
-  - name: create-cxx-env
-    build_logs_to_retain: 5
-    public: true
-    serial: true
-    plan:
-    - get: daily
-      trigger: true
-
-    - get: git-clone-resource-ci
-      resource: git-clone-resource-ci-cxx-env
-      trigger: true
-
-    - get: alpine
-      params: { save: true }
-
-    - task: cpycat
-      timeout: 30m
-      image: alpine
-      config:
-        platform: linux
-        inputs:
-        - name: git-clone-resource-ci
-        outputs:
-        - name: copycat
-        run:
-          path: sh
-          args:
-          - -exc
-          - |
-            cp -rfv ci/Dockerfile.cxxenv ../copycat/Dockerfile
-          dir: git-clone-resource-ci
-
-    - put: container-cxx-env
-      params:
-        load_base: alpine
-        build: copycat
-        tag_as_latest: true
-
   - name: pr-validate
     build_logs_to_retain: 10
     public: true
@@ -273,7 +109,11 @@ jobs:
     plan:
     - get: env-glibc
     - get: env-musl
-    - get: container-cxx-env
+    - get: env-cxx
+
+    # detect bitrot against nightly,beta and stable
+    - get: daily
+      trigger: true
 
     - get: git-repo
       resource: git-pull-request-resource
@@ -282,7 +122,7 @@ jobs:
 
     - task: build-libseccomp
       timeout: 30m
-      image: container-cxx-env
+      image: env-cxx
       config:
         platform: linux
         inputs:
@@ -504,7 +344,7 @@ jobs:
     plan:
     - get: env-glibc
     - get: env-musl
-    - get: container-cxx-env
+    - get: env-cxx
 
     - get: git-repo
       resource: git-clone-resource
@@ -512,7 +352,7 @@ jobs:
 
     - task: build-libseccomp
       timeout: 30m
-      image: container-cxx-env
+      image: env-cxx
       config:
         platform: linux
         inputs:
