@@ -59,6 +59,7 @@ ENV PATH=/home/sirmergealot/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:
 RUN curl https://sh.rustup.rs -sSf | \
     sh -s -- -y --default-toolchain stable
 RUN rustup toolchain add nightly beta
+RUN rustup component add clippy
 
 # Build a static library version of OpenSSL using musl-libc.  This is needed by
 # the popular Rust `hyper` crate.

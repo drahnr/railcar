@@ -9,9 +9,10 @@ RUN apt-get update -y && apt-get install -y autoconf automake libtool sed && ln 
 
 USER rust
 
+ENV CMAKE_MAKE_PROGRAM=make
+
 RUN rustup toolchain install \
         stable-x86_64-unknown-linux-musl \
         beta-x86_64-unknown-linux-musl \
         nightly-x86_64-unknown-linux-musl
-
-ENV CMAKE_MAKE_PROGRAM=make
+RUN rustup component add clippy
