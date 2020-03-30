@@ -7,15 +7,16 @@ resource_types:
 resources:
 - name: daily
   type: time
-  icon: clock-outline
+  icon: alarm
   source:
     location: Europe/Berlin
     interval: 24h
     start: 3:00 AM
     stop: 5:00 PM
 
-- name: git-clone-resource
+- name: git
   type: git
+  icon: git
   source:
     branch: master
     uri: https://github.com/drahnr/railcar.git
@@ -35,8 +36,9 @@ resources:
 #     branch: master
 #     uri: https://github.com/drahnr/railcar.git
 
-- name: git-pull-request-resource
+- name: github-pr
   type: pull-request
+  icon: circle-github
   source:
     repo: drahnr/railcar
     access_token: ((sirmergealot-github-token))
@@ -62,6 +64,7 @@ resources:
 
 - name: env-musl
   type: registry-image
+  icon: docker
   source:
     repository: quay.io/drahnr/rust-musl-builder
     username: ((quay-drahnr-username))
@@ -69,6 +72,7 @@ resources:
 
 - name: env-glibc
   type: registry-image
+  icon: docker
   source:
     tag: latest
     repository: quay.io/drahnr/rust-glibc-builder
@@ -77,9 +81,10 @@ resources:
 
 - name: env-cxx
   type: registry-image
+  icon: docker
   source:
     tag: latest
-    repository: quay.io/drahnr/env-cxx
+    repository: quay.io/drahnr/container-cxx-env
     username: ((quay-drahnr-username))
     password: ((quay-drahnr-password))
 
@@ -111,12 +116,8 @@ jobs:
     - get: env-musl
     - get: env-cxx
 
-    # detect bitrot against nightly,beta and stable
-    - get: daily
-      trigger: true
-
     - get: git-repo
-      resource: git-pull-request-resource
+      resource: github-pr
       trigger: true
 
 
@@ -288,14 +289,14 @@ jobs:
           - path: cargo
 
         on_success:
-          put: git-pull-request-resource
+          put: github-pr
           params:
             path: git-repo
             context: compile
             status: success
 
         on_failure:
-          put: git-pull-request-resource
+          put: github-pr
           params:
             path: git-repo
             context: compile
@@ -324,14 +325,14 @@ jobs:
           - path: cargo
 
         on_success:
-          put: git-pull-request-resource
+          put: github-pr
           params:
             path: git-repo
             context: format-check
             status: success
 
         on_failure:
-          put: git-pull-request-resource
+          put: github-pr
           params:
             path: git-repo
             context: format-check
@@ -346,8 +347,12 @@ jobs:
     - get: env-musl
     - get: env-cxx
 
+    # detect bitrot against nightly,beta and stable
+    - get: daily
+      trigger: true
+
     - get: git-repo
-      resource: git-clone-resource
+      resource: git
       trigger: true
 
     - task: build-libseccomp
