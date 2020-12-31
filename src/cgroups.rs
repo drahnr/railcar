@@ -31,7 +31,7 @@ pub fn apply(
         // ensure cgroup dir
         debug!{"creating cgroup dir {}", &dir};
         let chain = || format!("create cgroup dir {} failed", &dir);
-        create_dir_all(&dir).chain_err(chain)?;
+        create_dir_all(&dir).context_with(chain)?;
         // enter cgroups
         for k in key.split(',') {
             if let Some(cgroup_apply) = APPLIES.get(k) {
@@ -58,7 +58,7 @@ pub fn remove(cgroups_path: &str) -> Result<()> {
         debug!{"removing cgroup dir {}", &dir};
         // remove cgroup dir
         let chain = || format!("remove cgroup dir {} failed", &dir);
-        remove_dir(&dir).chain_err(chain)?;
+        remove_dir(&dir).context_with(chain)?;
     }
     Ok(())
 }
@@ -108,7 +108,7 @@ pub fn write_file(dir: &str, file: &str, data: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn read_file(dir: &str, file: &str) -> Result<(String)> {
+pub fn read_file(dir: &str, file: &str) -> Result<String> {
     let path = format!{"{}/{}", dir, file};
     let mut f = File::open(&path)?;
     let mut result = String::new();
@@ -329,7 +329,7 @@ fn copy_parent(dir: &str, file: &str) -> Result<()> {
                 return copy_parent(dir, file);
             }
             let msg = "failed to copy parent cgroup".to_string();
-            Err(e).chain_err(|| msg)
+            Err(e).context_with(|| msg)
         }
         Err(e) => Err(e),
         Ok(data) => write_file(dir, file, &data),

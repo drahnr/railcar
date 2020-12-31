@@ -3,23 +3,24 @@
 #![cfg_attr(feature = "nightly", feature(start))]
 #![cfg_attr(feature = "nightly", feature(ord_max_min))]
 
-extern crate caps;
 #[macro_use]
 extern crate clap;
 #[macro_use]
 extern crate error_chain;
 #[macro_use]
 extern crate lazy_static;
-extern crate libc;
 #[macro_use]
 extern crate log;
-extern crate nix;
-extern crate num_traits;
-extern crate prctl;
 #[macro_use]
 extern crate scopeguard;
-extern crate oci;
-extern crate seccomp_sys;
+
+use caps;
+use libc;
+use num_traits;
+use nix;
+use prctl;
+use oci;
+use seccomp_sys;
 
 mod capabilities;
 mod cgroups;
@@ -164,6 +165,7 @@ fn start(argc: isize, argv: *const *const u8) -> isize {
     }
 }
 
+use std::error::Error;
 // only show backtrace in debug mode
 #[cfg(not(debug_assertions))]
 fn print_backtrace(_: &Error) {}
@@ -400,7 +402,7 @@ fn run() -> Result<()> {
     let state_dir = matches.value_of("r").unwrap().to_string();
     debug!("ensuring railcar state dir {}", &state_dir);
     let chain = || format!("ensuring railcar state dir {} failed", &state_dir);
-    create_dir_all(&state_dir).chain_err(chain)?;
+    create_dir_all(&state_dir).context_with(chain)?;
 
     match matches.subcommand() {
         ("create", Some(create_matches)) => cmd_create(
@@ -452,7 +454,7 @@ fn state(id: &str, status: &str, pid: Pid, bundle: &str) -> oci::State {
 }
 
 // must be in instance_dir
-fn get_init_pid() -> Result<(Pid)> {
+fn get_init_pid() -> Result<Pid> {
     let mut pid = Pid::from_raw(-1);
     if let Ok(mut f) = File::open(INIT_PID) {
         let mut result = String::new();
@@ -464,9 +466,9 @@ fn get_init_pid() -> Result<(Pid)> {
     Ok(pid)
 }
 
-fn state_from_dir(id: &str, state_dir: &str) -> Result<(oci::State)> {
+fn state_from_dir(id: &str, state_dir: &str) -> Result<oci::State> {
     let dir = instance_dir(id, state_dir);
-    chdir(&*dir).chain_err(|| format!("instance {} doesn't exist", id))?;
+    chdir(&*dir).context_with(|| format!("instance {} doesn't exist", id))?;
     let mut status = "creating";
     let mut root = String::new();
     let pid = get_init_pid()?;
@@ -501,20 +503,20 @@ fn state_from_dir(id: &str, state_dir: &str) -> Result<(oci::State)> {
 fn cmd_state(id: &str, state_dir: &str) -> Result<()> {
     debug!("Performing state");
     let st = state_from_dir(id, state_dir)?;
-    println!("{}", st.to_string().chain_err(|| "invalid state")?);
+    println!("{}", st.to_string().context_with(|| "invalid state")?);
     Ok(())
 }
 
 fn cmd_create(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
     debug!("Performing create");
     let bundle = matches.value_of("bundle").unwrap();
-    chdir(&*bundle).chain_err(|| format!("failed to chdir to {}", bundle))?;
+    chdir(&*bundle).context_with(|| format!("failed to chdir to {}", bundle))?;
     let dir = instance_dir(id, state_dir);
     debug!("creating state dir {}", &dir);
     if let Err(e) = create_dir(&dir) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
             let chain = || format!("creating state dir {} failed", &dir);
-            Err(e).chain_err(chain)?;
+            Err(e).context_with(chain)?;
         }
         bail!("Container with id {} already exists", id);
     }
@@ -539,7 +541,7 @@ fn load_console_sockets() -> Result<(RawFd, RawFd)> {
             Err(e) => {
                 if e != ::nix::Error::Sys(Errno::ENOENT) {
                     let msg = format!("failed to open {}", csocket);
-                    return Err(e).chain_err(|| msg)?;
+                    return Err(e).context_with(|| msg)?;
                 }
                 -1
             }
@@ -551,7 +553,7 @@ fn load_console_sockets() -> Result<(RawFd, RawFd)> {
             Err(e) => {
                 if e != ::nix::Error::Sys(Errno::ENOENT) {
                     let msg = format!("failed to open {}", console);
-                    return Err(e).chain_err(|| msg)?;
+                    return Err(e).context_with(|| msg)?;
                 }
                 -1
             }
@@ -562,14 +564,14 @@ fn load_console_sockets() -> Result<(RawFd, RawFd)> {
 
 fn finish_create(id: &str, dir: &str, matches: &ArgMatches) -> Result<()> {
     let spec =
-        Spec::load(CONFIG).chain_err(|| format!("failed to load {}", CONFIG))?;
+        Spec::load(CONFIG).context_with(|| format!("failed to load {}", CONFIG))?;
 
     let rootfs = canonicalize(&spec.root.path)
-        .chain_err(|| format!{"failed to find root path {}", &spec.root.path})?
+        .context_with(|| format!{"failed to find root path {}", &spec.root.path})?
         .to_string_lossy()
         .into_owned();
 
-    chdir(&*dir).chain_err(|| format!("failed to chdir to {}", &dir))?;
+    chdir(&*dir).context_with(|| format!("failed to chdir to {}", &dir))?;
     // NOTE: There are certain configs where we will not be able to create a
     //       console during start, so this could potentially create the
     //       console during init and pass to the process via sendmsg. This
@@ -599,8 +601,8 @@ fn finish_create(id: &str, dir: &str, matches: &ArgMatches) -> Result<()> {
         // NOTE(vish): we might overwrite fds 0, 1, 2 with the console
         //             so make sure tsocketfd is a high fd that won't
         //             get overwritten
-        dup2(tmpfd, TSOCKETFD).chain_err(|| "could not dup tsocketfd")?;
-        close(tmpfd).chain_err(|| "could not close tsocket tmpfd")?;
+        dup2(tmpfd, TSOCKETFD).context_with(|| "could not dup tsocketfd")?;
+        close(tmpfd).context_with(|| "could not close tsocket tmpfd")?;
         let tsocketfd = TSOCKETFD;
         bind(tsocketfd, &SockAddr::Unix(UnixAddr::new(&*tsocket)?))?;
         let (csocketfd, consolefd) = load_console_sockets()?;
@@ -679,7 +681,7 @@ fn finish_create(id: &str, dir: &str, matches: &ArgMatches) -> Result<()> {
         debug!("writing updated config");
         updated
             .save(CONFIG)
-            .chain_err(|| format!("failed to save {}", CONFIG))?;
+            .context_with(|| format!("failed to save {}", CONFIG))?;
     }
     Ok(())
 }
@@ -689,10 +691,10 @@ fn cmd_start(id: &str, state_dir: &str) -> Result<()> {
 
     // we use instance dir for config written out by create
     let dir = instance_dir(id, state_dir);
-    chdir(&*dir).chain_err(|| format!("instance {} doesn't exist", id))?;
+    chdir(&*dir).context_with(|| format!("instance {} doesn't exist", id))?;
 
     let spec =
-        Spec::load(CONFIG).chain_err(|| format!("failed to load {}", CONFIG))?;
+        Spec::load(CONFIG).context_with(|| format!("failed to load {}", CONFIG))?;
 
     let init_pid = get_init_pid()?;
 
@@ -708,7 +710,7 @@ fn cmd_start(id: &str, state_dir: &str) -> Result<()> {
             Err(e) => {
                 if e != ::nix::Error::Sys(Errno::ENOENT) {
                     let msg = format!("failed to open {}", tsocket);
-                    return Err(e).chain_err(|| msg)?;
+                    return Err(e).context_with(|| msg)?;
                 }
                 -1
             }
@@ -722,7 +724,7 @@ fn cmd_start(id: &str, state_dir: &str) -> Result<()> {
             let st = state(id, "running", init_pid, &spec.root.path);
             for h in &hooks.prestart {
                 execute_hook(h, &st)
-                    .chain_err(|| "failed to execute prestart hooks")?;
+                    .context_with(|| "failed to execute prestart hooks")?;
             }
         }
         let linux = spec.linux.as_ref().unwrap();
@@ -754,7 +756,7 @@ fn cmd_start(id: &str, state_dir: &str) -> Result<()> {
         }
         debug!("writing zero to trigger socket to start exec");
         let data: &[u8] = &[0];
-        write(tsocketfd, data).chain_err(|| "failed to write zero")?;
+        write(tsocketfd, data).context_with(|| "failed to write zero")?;
         return Ok(());
     }
 
@@ -785,8 +787,8 @@ fn cmd_kill(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
     let signal = signals::to_signal(matches.value_of("signal").unwrap())
         .unwrap_or(Signal::SIGTERM);
     let dir = instance_dir(id, state_dir);
-    chdir(&*dir).chain_err(|| format!("instance {} doesn't exist", id))?;
-    let mut f = File::open(INIT_PID).chain_err(|| "failed to find pid")?;
+    chdir(&*dir).context_with(|| format!("instance {} doesn't exist", id))?;
+    let mut f = File::open(INIT_PID).context_with(|| "failed to find pid")?;
     let mut result = String::new();
     f.read_to_string(&mut result)?;
     if let Ok(init_pid) = result.parse::<i32>() {
@@ -802,8 +804,8 @@ fn cmd_kill(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
 fn cmd_ps(id: &str, state_dir: &str) -> Result<()> {
     debug!("Performing ps");
     let dir = instance_dir(id, state_dir);
-    chdir(&*dir).chain_err(|| format!("instance {} doesn't exist", id))?;
-    let mut f = File::open(PROCESS_PID).chain_err(|| "failed to find pid")?;
+    chdir(&*dir).context_with(|| format!("instance {} doesn't exist", id))?;
+    let mut f = File::open(PROCESS_PID).context_with(|| "failed to find pid")?;
     let mut result = String::new();
     f.read_to_string(&mut result)?;
     // TODO: return any other execed processes
@@ -820,7 +822,7 @@ fn cmd_ps(id: &str, state_dir: &str) -> Result<()> {
     println!(
         "{}",
         oci::serialize::to_string(&pids)
-            .chain_err(|| "could not serialize pids")?
+            .context_with(|| "could not serialize pids")?
     );
     Ok(())
 }
@@ -847,14 +849,14 @@ fn cmd_delete(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
                         let chain = || {
                             format!("failed to kill process {} ", process_pid)
                         };
-                        if let Error(ErrorKind::Nix(nixerr), _) = e {
+                        if let Error::Nix(nixerr) = e {
                             if nixerr == ::nix::Error::Sys(Errno::ESRCH) {
                                 debug!("container process is already dead");
                             } else {
-                                Err(e).chain_err(chain)?;
+                                Err(e).context_with(chain)?;
                             }
                         } else {
-                            Err(e).chain_err(chain)?;
+                            Err(e).context_with(chain)?;
                         }
                     }
                 } else {
@@ -876,17 +878,17 @@ fn cmd_delete(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
                 signals::signal_process(Pid::from_raw(ipid), Signal::SIGKILL)
             {
                 let chain = || format!("failed to kill init {} ", ipid);
-                if let Error(ErrorKind::Nix(nixerr), _) = e {
+                if let Error::Nix(nixerr) = e {
                     if let ::nix::Error::Sys(errno) = nixerr {
                         if errno == Errno::ESRCH {
                             debug!("init process is already dead");
                         }
-                        Err(e).chain_err(chain)?;
+                        Err(e).context_with(chain)?;
                     } else {
-                        Err(e).chain_err(chain)?;
+                        Err(e).context_with(chain)?;
                     }
                 } else {
-                    Err(e).chain_err(chain)?;
+                    Err(e).context_with(chain)?;
                 }
             }
         } else {
@@ -903,7 +905,7 @@ fn cmd_delete(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
             linux.cgroups_path.clone()
         };
         debug!("removing cgroups");
-        if let Err(Error(ErrorKind::Io(e), _)) = cgroups::remove(&cpath) {
+        if let Err(Error::Io(e)) = cgroups::remove(&cpath) {
             if e.kind() != std::io::ErrorKind::NotFound {
                 warn!("failed to remove cgroup dir: {}", e);
             }
@@ -913,7 +915,7 @@ fn cmd_delete(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
             let st = state_from_dir(id, state_dir)?;
             for h in &hooks.poststop {
                 execute_hook(h, &st)
-                    .chain_err(|| "failed to execute poststop hooks")?;
+                    .context_with(|| "failed to execute poststop hooks")?;
             }
         }
     } else {
@@ -923,7 +925,7 @@ fn cmd_delete(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
     if let Err(e) = remove_dir_all(&dir) {
         if e.kind() != std::io::ErrorKind::NotFound {
             let chain = || format!("removing state dir {} failed", &dir);
-            Err(e).chain_err(chain)?;
+            Err(e).context_with(chain)?;
         }
         bail!("State dir for {} disappeared", id);
     }
@@ -933,9 +935,9 @@ fn cmd_delete(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
 
 fn cmd_run(id: &str, matches: &ArgMatches) -> Result<()> {
     let bundle = matches.value_of("bundle").unwrap();
-    chdir(&*bundle).chain_err(|| format!("failed to chdir to {}", bundle))?;
+    chdir(&*bundle).context_with(|| format!("failed to chdir to {}", bundle))?;
     let spec =
-        Spec::load(CONFIG).chain_err(|| format!("failed to load {}", CONFIG))?;
+        Spec::load(CONFIG).context_with(|| format!("failed to load {}", CONFIG))?;
 
     let child_pid = safe_run_container(
         id,
@@ -956,44 +958,44 @@ fn cmd_run(id: &str, matches: &ArgMatches) -> Result<()> {
 fn execute_hook(hook: &oci::Hook, state: &oci::State) -> Result<()> {
     debug!("executing hook {:?}", hook);
     let (rfd, wfd) =
-        pipe2(OFlag::O_CLOEXEC).chain_err(|| "failed to create pipe")?;
+        pipe2(OFlag::O_CLOEXEC).context_with(|| "failed to create pipe")?;
     match fork()? {
         ForkResult::Child => {
-            close(rfd).chain_err(|| "could not close rfd")?;
+            close(rfd).context_with(|| "could not close rfd")?;
             let (rstdin, wstdin) =
-                pipe2(OFlag::empty()).chain_err(|| "failed to create pipe")?;
+                pipe2(OFlag::empty()).context_with(|| "failed to create pipe")?;
             // fork second child to execute hook
             match fork()? {
                 ForkResult::Child => {
-                    close(0).chain_err(|| "could not close stdin")?;
-                    dup2(rstdin, 0).chain_err(|| "could not dup to stdin")?;
-                    close(rstdin).chain_err(|| "could not close rstdin")?;
-                    close(wstdin).chain_err(|| "could not close wstdin")?;
+                    close(0).context_with(|| "could not close stdin")?;
+                    dup2(rstdin, 0).context_with(|| "could not dup to stdin")?;
+                    close(rstdin).context_with(|| "could not close rstdin")?;
+                    close(wstdin).context_with(|| "could not close wstdin")?;
                     do_exec(&hook.path, &hook.args, &hook.env)?;
                 }
                 ForkResult::Parent { child } => {
-                    close(rstdin).chain_err(|| "could not close rstdin")?;
+                    close(rstdin).context_with(|| "could not close rstdin")?;
                     unsafe {
                         // closes the file descriptor autmotaically
                         state
                             .to_writer(File::from_raw_fd(wstdin))
-                            .chain_err(|| "could not write state")?;
+                            .context_with(|| "could not write state")?;
                     }
                     let (exit_code, sig) = wait_for_child(child)?;
                     if let Some(signal) = sig {
                         // write signal to pipe.
                         let data: &[u8] = &[signal as u8];
                         write(wfd, data)
-                            .chain_err(|| "failed to write signal hook")?;
+                            .context_with(|| "failed to write signal hook")?;
                     }
-                    close(wfd).chain_err(|| "could not close wfd")?;
+                    close(wfd).context_with(|| "could not close wfd")?;
                     std::process::exit(exit_code as i32);
                 }
             }
         }
         ForkResult::Parent { child } => {
             // the wfd is only used by the child so close it
-            close(wfd).chain_err(|| "could not close wfd")?;
+            close(wfd).context_with(|| "could not close wfd")?;
             let mut timeout = -1 as i32;
             if let Some(t) = hook.timeout {
                 timeout = t as i32 * 1000;
@@ -1001,12 +1003,12 @@ fn execute_hook(hook: &oci::Hook, state: &oci::State) -> Result<()> {
             // a timeout will cause a failure and child will be killed on exit
             if let Some(sig) = wait_for_pipe_sig(rfd, timeout)? {
                 let msg = format!{"hook exited with signal: {:?}", sig};
-                return Err(ErrorKind::InvalidHook(msg).into());
+                return Err(Error::InvalidHook(msg));
             }
             let (exit_code, _) = wait_for_child(child)?;
             if exit_code != 0 {
                 let msg = format!{"hook exited with exit code: {}", exit_code};
-                return Err(ErrorKind::InvalidHook(msg).into());
+                return Err(Error::InvalidHook(msg));
             }
         }
     };
@@ -1069,7 +1071,7 @@ fn run_container(
 
     if spec.linux.is_none() {
         let msg = "linux config is empty".to_string();
-        return Err(ErrorKind::InvalidSpec(msg).into());
+        return Err(Error::InvalidSpec(msg));
     }
 
     let linux = spec.linux.as_ref().unwrap();
@@ -1092,7 +1094,7 @@ fn run_container(
             cf |= space;
         } else {
             let fd = open(&*ns.path, OFlag::empty(), Mode::empty())
-                .chain_err(|| format!("failed to open file for {:?}", space))?;
+                .context_with(|| format!("failed to open file for {:?}", space))?;
             to_enter.push((space, fd));
         }
     }
@@ -1139,11 +1141,11 @@ fn run_container(
             mount_fd = fd;
             continue;
         }
-        setns(fd, space).chain_err(|| format!("failed to enter {:?}", space))?;
+        setns(fd, space).context_with(|| format!("failed to enter {:?}", space))?;
         close(fd)?;
         if space == CloneFlags::CLONE_NEWUSER {
             setid(Uid::from_raw(0), Gid::from_raw(0))
-                .chain_err(|| "failed to setid")?;
+                .context_with(|| "failed to setid")?;
             bind_devices = true;
         }
     }
@@ -1151,12 +1153,12 @@ fn run_container(
     // TODO: handle systemd-style cgroup_path
     if !cpath.starts_with('/') {
         let msg = "cgroup path must be absolute".to_string();
-        return Err(ErrorKind::InvalidSpec(msg).into());
+        return Err(Error::InvalidSpec(msg));
     }
 
     // unshare other ns
     let chain = || format!("failed to unshare {:?}", cf);
-    unshare(cf & !CloneFlags::CLONE_NEWUSER).chain_err(chain)?;
+    unshare(cf & !CloneFlags::CLONE_NEWUSER).context_with(chain)?;
 
     if enter_pid {
         fork_enter_pid(init, daemonize)?;
@@ -1168,25 +1170,25 @@ fn run_container(
 
     if cf.contains(CloneFlags::CLONE_NEWNS) {
         mounts::init_rootfs(spec, rootfs, &cpath, bind_devices)
-            .chain_err(|| "failed to init rootfs")?;
+            .context_with(|| "failed to init rootfs")?;
     }
 
     if !init_only {
         // notify first parent that it can continue
         debug!("writing zero to pipe to trigger prestart");
         let data: &[u8] = &[0];
-        write(wfd, data).chain_err(|| "failed to write zero")?;
+        write(wfd, data).context_with(|| "failed to write zero")?;
     }
 
     if mount_fd != -1 {
-        setns(mount_fd, CloneFlags::CLONE_NEWNS).chain_err(|| {
+        setns(mount_fd, CloneFlags::CLONE_NEWNS).context_with(|| {
             "failed to enter CloneFlags::CLONE_NEWNS".to_string()
         })?;
         close(mount_fd)?;
     }
 
     if cf.contains(CloneFlags::CLONE_NEWNS) {
-        mounts::pivot_rootfs(&*rootfs).chain_err(|| "failed to pivot rootfs")?;
+        mounts::pivot_rootfs(&*rootfs).context_with(|| "failed to pivot rootfs")?;
 
         // only set sysctls in newns
         for (key, value) in &linux.sysctl {
@@ -1210,7 +1212,7 @@ fn run_container(
                 std::ptr::null_mut(),
             )
         };
-        Errno::result(ret).chain_err(|| "could not openpty")?;
+        Errno::result(ret).context_with(|| "could not openpty")?;
         defer!(close(master).unwrap());
         let data: &[u8] = b"/dev/ptmx";
         let iov = [nix::sys::uio::IoVec::from_slice(data)];
@@ -1219,26 +1221,26 @@ fn run_container(
         let cmsg = ControlMessage::ScmRights(&fds);
         sendmsg(csocketfd, &iov, &[cmsg], MsgFlags::empty(), None)?;
         consolefd = slave;
-        close(csocketfd).chain_err(|| "could not close csocketfd")?;
+        close(csocketfd).context_with(|| "could not close csocketfd")?;
     }
     if consolefd != -1 {
         setsid()?;
         if unsafe { libc::ioctl(consolefd, libc::TIOCSCTTY) } < 0 {
             warn!("could not TIOCSCTTY");
         };
-        dup2(consolefd, 0).chain_err(|| "could not dup tty to stdin")?;
-        dup2(consolefd, 1).chain_err(|| "could not dup tty to stdout")?;
-        dup2(consolefd, 2).chain_err(|| "could not dup tty to stderr")?;
+        dup2(consolefd, 0).context_with(|| "could not dup tty to stdin")?;
+        dup2(consolefd, 1).context_with(|| "could not dup tty to stdout")?;
+        dup2(consolefd, 2).context_with(|| "could not dup tty to stderr")?;
 
         if consolefd > 2 {
-            close(consolefd).chain_err(|| "could not close consolefd")?;
+            close(consolefd).context_with(|| "could not close consolefd")?;
         }
 
         // NOTE: we may need to fix up the mount of /dev/console
     }
 
     if cf.contains(CloneFlags::CLONE_NEWNS) {
-        mounts::finish_rootfs(spec).chain_err(|| "failed to finish rootfs")?;
+        mounts::finish_rootfs(spec).context_with(|| "failed to finish rootfs")?;
     }
 
     // change to specified working directory
@@ -1284,7 +1286,7 @@ fn run_container(
     // notify first parent that it can continue
     debug!("writing zero to pipe to trigger poststart");
     let data: &[u8] = &[0];
-    write(wfd, data).chain_err(|| "failed to write zero")?;
+    write(wfd, data).context_with(|| "failed to write zero")?;
 
     if init {
         if init_only && tsocketfd == -1 {
@@ -1295,15 +1297,15 @@ fn run_container(
     }
 
     // we nolonger need wfd, so close it
-    close(wfd).chain_err(|| "could not close wfd")?;
+    close(wfd).context_with(|| "could not close wfd")?;
 
     // wait for trigger
     if tsocketfd != -1 {
         listen(tsocketfd, 1)?;
         let fd = accept(tsocketfd)?;
         wait_for_pipe_zero(fd, -1)?;
-        close(fd).chain_err(|| "could not close accept fd")?;
-        close(tsocketfd).chain_err(|| "could not close trigger fd")?;
+        close(fd).context_with(|| "could not close accept fd")?;
+        close(tsocketfd).context_with(|| "could not close trigger fd")?;
     }
 
     do_exec(&spec.process.args[0], &spec.process.args, &spec.process.env)?;
@@ -1322,13 +1324,13 @@ fn fork_first(
     cpath: &str,
     spec: &Spec,
 ) -> Result<(Pid, RawFd)> {
-    let ccond = Cond::new().chain_err(|| "failed to create cond")?;
-    let pcond = Cond::new().chain_err(|| "failed to create cond")?;
+    let ccond = Cond::new().context_with(|| "failed to create cond")?;
+    let pcond = Cond::new().context_with(|| "failed to create cond")?;
     let (rfd, wfd) =
-        pipe2(OFlag::O_CLOEXEC).chain_err(|| "failed to create pipe")?;
+        pipe2(OFlag::O_CLOEXEC).context_with(|| "failed to create pipe")?;
     match fork()? {
         ForkResult::Child => {
-            close(rfd).chain_err(|| "could not close rfd")?;
+            close(rfd).context_with(|| "could not close rfd")?;
             set_name("rc-user")?;
 
             // set oom_score_adj
@@ -1346,35 +1348,35 @@ fn fork_first(
 
             if userns {
                 unshare(CloneFlags::CLONE_NEWUSER)
-                    .chain_err(|| "failed to unshare user")?;
+                    .context_with(|| "failed to unshare user")?;
             }
-            ccond.notify().chain_err(|| "failed to notify parent")?;
-            pcond.wait().chain_err(|| "failed to wait for parent")?;
+            ccond.notify().context_with(|| "failed to notify parent")?;
+            pcond.wait().context_with(|| "failed to wait for parent")?;
             if userns {
                 setid(Uid::from_raw(0), Gid::from_raw(0))
-                    .chain_err(|| "failed to setid")?;
+                    .context_with(|| "failed to setid")?;
             }
             // child continues on
         }
         ForkResult::Parent { child } => {
-            close(wfd).chain_err(|| "could not close wfd")?;
-            ccond.wait().chain_err(|| "failed to wait for child")?;
+            close(wfd).context_with(|| "could not close wfd")?;
+            ccond.wait().context_with(|| "failed to wait for child")?;
             if userns {
                 // write uid/gid map
                 write_mappings(
                     &format!("/proc/{}/uid_map", child),
                     &linux.uid_mappings,
-                ).chain_err(|| "failed to write uid mappings")?;
+                ).context_with(|| "failed to write uid mappings")?;
                 write_mappings(
                     &format!("/proc/{}/gid_map", child),
                     &linux.gid_mappings,
-                ).chain_err(|| "failed to write gid mappings")?;
+                ).context_with(|| "failed to write gid mappings")?;
             }
             // setup cgroups
             let schild = child.to_string();
             cgroups::apply(&linux.resources, &schild, cpath)?;
             // notify child
-            pcond.notify().chain_err(|| "failed to notify child")?;
+            pcond.notify().context_with(|| "failed to notify child")?;
 
             // NOTE: if we are entering pid, we wait for the next
             //       child to exit so we can adopt its grandchild
@@ -1398,7 +1400,7 @@ fn fork_first(
                     let st = state(id, "running", init_pid, &spec.root.path);
                     for h in &hooks.prestart {
                         execute_hook(h, &st)
-                            .chain_err(|| "failed to execute prestart hooks")?;
+                            .context_with(|| "failed to execute prestart hooks")?;
                     }
                 }
                 wait_for_pipe_zero(rfd, -1)?;
@@ -1465,7 +1467,7 @@ fn fork_final_child(wfd: RawFd, tfd: RawFd, daemonize: bool) -> Result<()> {
         }
         ForkResult::Parent { .. } => {
             if tfd != -1 {
-                close(tfd).chain_err(|| "could not close trigger fd")?;
+                close(tfd).context_with(|| "could not close trigger fd")?;
             }
             do_init(wfd, daemonize)?;
             Ok(())
@@ -1475,7 +1477,7 @@ fn fork_final_child(wfd: RawFd, tfd: RawFd, daemonize: bool) -> Result<()> {
 
 fn do_init(wfd: RawFd, daemonize: bool) -> Result<()> {
     if daemonize {
-        close(wfd).chain_err(|| "could not close wfd")?;
+        close(wfd).context_with(|| "could not close wfd")?;
     }
     let s = SigSet::all();
     s.thread_block()?;
@@ -1498,9 +1500,9 @@ fn do_init(wfd: RawFd, daemonize: bool) -> Result<()> {
                     // raising from pid 1 doesn't work as you would
                     // expect, so write signal to pipe.
                     let data: &[u8] = &[s as u8];
-                    write(wfd, data).chain_err(|| "failed to write signal")?;
+                    write(wfd, data).context_with(|| "failed to write signal")?;
                 }
-                close(wfd).chain_err(|| "could not close wfd")?;
+                close(wfd).context_with(|| "could not close wfd")?;
             }
             debug!("all children terminated, exiting with {}", code);
             std::process::exit(code)
@@ -1528,7 +1530,7 @@ fn do_exec(path: &str, args: &[String], env: &[String]) -> Result<()> {
         debug!("adding {:?} to env", e);
         putenv(e)?;
     }
-    execvp(&p, &a).chain_err(|| "failed to exec")?;
+    execvp(&p, &a).context_with(|| "failed to exec")?;
     // should never reach here
     Ok(())
 }
@@ -1553,7 +1555,7 @@ fn set_sysctl(key: &str, value: &str) -> Result<()> {
         Err(::nix::Error::Sys(errno)) => {
             if errno != Errno::ENOENT {
                 let msg = format!("could not set sysctl {} to {}", key, value);
-                Err(::nix::Error::Sys(errno)).chain_err(|| msg)?;
+                Err(::nix::Error::Sys(errno)).context_with(|| msg)?;
             }
             warn!("could not set {} because it doesn't exist", key);
             return Ok(());
@@ -1599,13 +1601,13 @@ fn wait_for_pipe_vec(
         match poll(pfds, timeout) {
             Err(e) => {
                 if e != ::nix::Error::Sys(Errno::EINTR) {
-                    return Err(e).chain_err(|| "unable to poll rfd")?;
+                    return Err(e).context_with(|| "unable to poll rfd")?;
                 }
                 continue;
             }
             Ok(n) => {
                 if n == 0 {
-                    return Err(ErrorKind::Timeout(timeout).into());
+                    return Err(Error::Timeout(timeout));
                 }
             }
         }
@@ -1616,7 +1618,7 @@ fn wait_for_pipe_vec(
         }
         if events.unwrap() == PollFlags::POLLNVAL {
             let msg = "file descriptor closed unexpectedly".to_string();
-            return Err(ErrorKind::PipeClosed(msg).into());
+            return Err(Error::PipeClosed(msg));
         }
         if !events
             .unwrap()
@@ -1627,10 +1629,10 @@ fn wait_for_pipe_vec(
             continue;
         }
         let data: &mut [u8] = &mut [0];
-        let n = read(rfd, data).chain_err(|| "could not read from rfd")?;
+        let n = read(rfd, data).context_with(|| "could not read from rfd")?;
         if n == 0 {
             // the wfd was closed so close our end
-            close(rfd).chain_err(|| "could not close rfd")?;
+            close(rfd).context_with(|| "could not close rfd")?;
             break;
         }
         result.extend(data.iter().cloned());
@@ -1644,7 +1646,7 @@ fn wait_for_pipe_sig(rfd: RawFd, timeout: i32) -> Result<Option<Signal>> {
         return Ok(None);
     }
     let chain = || "invalid signal";
-    let s = Signal::from_c_int(result[0] as i32).chain_err(chain)?;
+    let s = Signal::from_c_int(result[0] as i32).context_with(chain)?;
     Ok(Some(s))
 }
 
@@ -1652,11 +1654,11 @@ fn wait_for_pipe_zero(rfd: RawFd, timeout: i32) -> Result<()> {
     let result = wait_for_pipe_vec(rfd, timeout, 1)?;
     if result.len() < 1 {
         let msg = "file descriptor closed unexpectedly".to_string();
-        return Err(ErrorKind::PipeClosed(msg).into());
+        return Err(Error::PipeClosed(msg));
     }
     if result[0] != 0 {
         let msg = format!{"got {} from pipe instead of 0", result[0]};
-        return Err(ErrorKind::InvalidValue(msg).into());
+        return Err(Error::InvalidValue(msg));
     }
     Ok(())
 }
@@ -1671,7 +1673,7 @@ fn wait_for_child(child: Pid) -> Result<(i32, Option<Signal>)> {
                     continue;
                 }
                 let msg = format!("could not waitpid on {}", child);
-                return Err(::nix::Error::Sys(errno)).chain_err(|| msg)?;
+                return Err(::nix::Error::Sys(errno)).context_with(|| msg)?;
             }
             Err(e) => {
                 return Err(e)?;
@@ -1722,7 +1724,7 @@ fn reap_children() -> Result<(WaitStatus)> {
         match waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
             Err(e) => {
                 if e != ::nix::Error::Sys(Errno::ECHILD) {
-                    return Err(e).chain_err(|| "could not waitpid")?;
+                    return Err(e).context_with(|| "could not waitpid")?;
                 }
                 // ECHILD means no processes are left
                 break;
@@ -1767,7 +1769,7 @@ fn set_name(name: &str) -> Result<()> {
     };
     unsafe {
         let init =
-            std::ffi::CString::new(name).chain_err(|| "invalid process name")?;
+            std::ffi::CString::new(name).context_with(|| "invalid process name")?;
         let len = std::ffi::CStr::from_ptr(*ARGV).to_bytes().len();
         // after fork, ARGV points to the thread's local
         // copy of arg0.

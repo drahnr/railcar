@@ -220,7 +220,7 @@ fn cap_from_object<'de, 'z, 'k, D>(
 >
 where
     D: serde::Deserializer<'de>,
-    'z: 'de,
+    'de: 'z,
     'de: 'k,
 {
     if let Some(v) = o.get(key) {

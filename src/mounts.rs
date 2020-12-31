@@ -345,7 +345,7 @@ fn mount_from(
     {
         if errno != Errno::EINVAL {
             let chain = || format!("mount of {} failed", &m.destination);
-            return Err(::nix::Error::Sys(errno)).chain_err(chain)?;
+            return Err(::nix::Error::Sys(errno)).context_with(chain)?;
         }
         // try again without mount label
         mount(Some(&*src), &*dest, Some(&*m.typ), flags, Some(data))?;
@@ -372,7 +372,7 @@ fn mount_from(
             None::<&str>,
             flags | MsFlags::MS_REMOUNT,
             None::<&str>,
-        ).chain_err(chain)?;
+        ).context_with(chain)?;
     }
     Ok(())
 }
@@ -415,7 +415,7 @@ fn ensure_ptmx() -> Result<()> {
     if let Err(e) = remove_file("dev/ptmx") {
         if e.kind() != ::std::io::ErrorKind::NotFound {
             let msg = "could not delete /dev/ptmx".to_string();
-            Err(e).chain_err(|| msg)?;
+            Err(e).context_with(|| msg)?;
         }
     }
     symlink("pts/ptmx", "dev/ptmx")?;
@@ -492,7 +492,7 @@ fn mask_path(path: &str) -> Result<()> {
         // ignore ENOENT and ENOTDIR: path to mask doesn't exist
         if errno != Errno::ENOENT && errno != Errno::ENOTDIR {
             let msg = format!("could not mask {}", path);
-            Err(::nix::Error::Sys(errno)).chain_err(|| msg)?;
+            Err(::nix::Error::Sys(errno)).context_with(|| msg)?;
         } else {
             debug!("ignoring mask of {} because it doesn't exist", path);
         }
@@ -517,7 +517,7 @@ fn readonly_path(path: &str) -> Result<()> {
                 // ignore ENOENT: path to make read only doesn't exist
                 if errno != Errno::ENOENT {
                     let msg = format!("could not readonly {}", path);
-                    Err(e).chain_err(|| msg)?;
+                    Err(e).context_with(|| msg)?;
                 }
                 debug!("ignoring remount of {} because it doesn't exist", path);
                 return Ok(());

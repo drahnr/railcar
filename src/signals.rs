@@ -30,12 +30,12 @@ extern "C" fn child_handler(signo: c_int) {
 
 unsafe fn set_handler(handler: SigHandler) -> Result<()> {
     let a = SigAction::new(handler, SaFlags::empty(), SigSet::all());
-    sigaction(Signal::SIGTERM, &a).chain_err(|| "failed to sigaction")?;
-    sigaction(Signal::SIGQUIT, &a).chain_err(|| "failed to sigaction")?;
-    sigaction(Signal::SIGINT, &a).chain_err(|| "failed to sigaction")?;
-    sigaction(Signal::SIGHUP, &a).chain_err(|| "failed to sigaction")?;
-    sigaction(Signal::SIGUSR1, &a).chain_err(|| "failed to sigaction")?;
-    sigaction(Signal::SIGUSR2, &a).chain_err(|| "failed to sigaction")?;
+    sigaction(Signal::SIGTERM, &a).context_with(|| "failed to sigaction")?;
+    sigaction(Signal::SIGQUIT, &a).context_with(|| "failed to sigaction")?;
+    sigaction(Signal::SIGINT, &a).context_with(|| "failed to sigaction")?;
+    sigaction(Signal::SIGHUP, &a).context_with(|| "failed to sigaction")?;
+    sigaction(Signal::SIGUSR1, &a).context_with(|| "failed to sigaction")?;
+    sigaction(Signal::SIGUSR2, &a).context_with(|| "failed to sigaction")?;
     Ok(())
 }
 
@@ -99,15 +99,15 @@ pub fn raise_for_parent(signal: Signal) -> Result<()> {
         let a =
             SigAction::new(SigHandler::SigDfl, SaFlags::empty(), SigSet::all());
         unsafe {
-            sigaction(signal, &a).chain_err(|| "failed to sigaction")?;
+            sigaction(signal, &a).context_with(|| "failed to sigaction")?;
         }
     }
     // make sure the signal is unblocked
     let mut s = SigSet::empty();
     s.add(signal);
-    s.thread_unblock().chain_err(|| "failed to unblock signal")?;
+    s.thread_unblock().context_with(|| "failed to unblock signal")?;
     // raise the signal
-    raise(signal).chain_err(|| format!("failed to raise signal {:?}", signal))?;
+    raise(signal).context_with(|| format!("failed to raise signal {:?}", signal))?;
     Ok(())
 }
 

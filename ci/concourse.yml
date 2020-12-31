@@ -120,7 +120,6 @@ jobs:
       resource: github-pr
       trigger: true
 
-
     - task: build-libseccomp
       timeout: 30m
       image: env-cxx
@@ -365,6 +364,7 @@ jobs:
         outputs:
         - name: libseccomp
         run:
+          user: root
           path: sh
           args:
           - -exc
@@ -469,7 +469,9 @@ jobs:
             args:
             - -exc
             - |
-              export CARGO_HOME="$(pwd)/../cargo"
+              export CARGO_HOME="$(realpath $(pwd)/../cargo)"
+              export CARGO_TARGET_DIR="$(realpath ${CARGO_HOME}/target_dir)"
+              mkdir -p "${CARGO_TARGET_DIR}"
               rustc +stable --target x86_64-unknown-linux-musl --version --verbose
               cargo +stable b --target x86_64-unknown-linux-musl
               cargo +stable t --target x86_64-unknown-linux-musl
@@ -492,6 +494,8 @@ jobs:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
+              export CARGO_TARGET_DIR="$(realpath ${CARGO_HOME}/target_dir)"
+              mkdir -p "${CARGO_TARGET_DIR}"
               rustc +beta --target x86_64-unknown-linux-musl --version --verbose
               cargo +beta b --target x86_64-unknown-linux-musl
               cargo +beta t --target x86_64-unknown-linux-musl
@@ -507,13 +511,15 @@ jobs:
           inputs:
           - name: git-repo
           - name: libseccomp
-          run:          
+          run:
             user: root
             path: sh
             args:
             - -exc
             - |
               export CARGO_HOME="$(pwd)/../cargo"
+              export CARGO_TARGET_DIR="$(realpath ${CARGO_HOME}/target_dir)"
+              mkdir -p "${CARGO_TARGET_DIR}"
               rustc +nightly --target x86_64-unknown-linux-musl --version --verbose
               cargo +nightly b --features=nightly --target x86_64-unknown-linux-musl
               cargo +nightly t --features=nightly --target x86_64-unknown-linux-musl
