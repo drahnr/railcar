@@ -1,83 +1,35 @@
-use serde_json;
 use serde;
+use serde_json;
 
-use std::fmt;
-use std::io;
-use std::error::Error;
 use std::fs::File;
+use std::io;
 
-#[derive(Debug)]
-pub enum SerializeError {
-    Io(io::Error),
-    Json(serde_json::Error),
-}
-
-impl fmt::Display for SerializeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            SerializeError::Io(ref err) => err.fmt(f),
-            SerializeError::Json(ref err) => err.fmt(f),
-        }
-    }
-}
-
-impl Error for SerializeError {
-    fn description(&self) -> &str {
-        match *self {
-            SerializeError::Io(ref err) => err.description(),
-            SerializeError::Json(ref err) => err.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn Error> {
-        match *self {
-            SerializeError::Io(ref err) => Some(err),
-            SerializeError::Json(ref err) => Some(err),
-        }
-    }
-}
-
-impl From<io::Error> for SerializeError {
-    fn from(err: io::Error) -> SerializeError {
-        SerializeError::Io(err)
-    }
-}
-
-impl From<serde_json::Error> for SerializeError {
-    fn from(err: serde_json::Error) -> SerializeError {
-        SerializeError::Json(err)
-    }
-}
+use crate::errors::*;
 
 pub fn to_writer<W: io::Write, T: serde::Serialize>(
     obj: &T,
     mut writer: W,
-) -> Result<(), SerializeError> {
+) -> Result<()> {
     Ok(serde_json::to_writer(&mut writer, &obj)?)
 }
 
-// pub fn from_reader<R: io::Read, T: serde::Deserialize>(reader: R)
-//                                           -> Result<T, SerializeError> {
+// pub fn from_reader<'de, R: io::Read, T: serde::Deserialize<'de>>(reader: R)
+//                                           -> Result<T> {
 //     Ok(serde_json::from_reader(reader)?)
 // }
 
-pub fn serialize<T: serde::Serialize>(
-    obj: &T,
-    path: &str,
-) -> Result<(), SerializeError> {
+pub fn serialize<T: serde::Serialize>(obj: &T, path: &str) -> Result<()> {
     let mut file = File::create(path)?;
     Ok(serde_json::to_writer(&mut file, &obj)?)
 }
 
-pub fn deserialize<T: serde::Deserialize>(
+pub fn deserialize<'de, T: serde::de::DeserializeOwned>(
     path: &str,
-) -> Result<T, SerializeError> {
+) -> Result<T> {
     let file = File::open(path)?;
     Ok(serde_json::from_reader(&file)?)
 }
 
-pub fn to_string<T: serde::Serialize>(
-    obj: &T,
-) -> Result<String, SerializeError> {
+pub fn to_string<T: serde::Serialize>(obj: &T) -> Result<String> {
     Ok(serde_json::to_string(&obj)?)
 }
