@@ -15,7 +15,7 @@ fn syscall_resolve_name(name: &str) -> crate::Result<i32> {
     let id = unsafe { seccomp_syscall_resolve_name(s.as_ptr()) };
     if id == __NR_SCMP_ERROR {
         let msg = format!("could not resolve {}", name);
-        Err(ErrorKind::SeccompError(msg).into())
+        Err(Error::SeccompError(msg))
     } else {
         Ok(id)
     }
@@ -25,7 +25,7 @@ fn init(act: u32) -> Result<*mut scmp_filter_ctx> {
     let filter_ctx = unsafe { seccomp_init(act) };
     if filter_ctx.is_null() {
         let msg = "initialization failed".to_string();
-        Err(ErrorKind::SeccompError(msg).into())
+        Err(Error::SeccompError(msg))
     } else {
         Ok(filter_ctx)
     }
@@ -35,7 +35,7 @@ fn arch_add(ctx: *mut scmp_filter_ctx, arch: scmp_arch) -> crate::Result<i32> {
     let id = unsafe { seccomp_arch_add(ctx, arch as u32) };
     if id == __NR_SCMP_ERROR {
         let msg = format!("could not add arch {:?}", arch);
-        Err(ErrorKind::SeccompError(msg).into())
+        Err(Error::SeccompError(msg))
     } else {
         Ok(id)
     }
@@ -57,7 +57,7 @@ fn rule_add(
     };
     if res != 0 {
         let msg = format!("failed to add rule for {}", id);
-        Err(ErrorKind::SeccompError(msg).into())
+        Err(Error::SeccompError(msg))
     } else {
         Ok(())
     }
@@ -71,7 +71,7 @@ fn attr_set(
     let res = unsafe { seccomp_attr_set(ctx, attr, value) };
     if res != 0 {
         let msg = "failed to set_attr".to_string();
-        Err(ErrorKind::SeccompError(msg).into())
+        Err(Error::SeccompError(msg))
     } else {
         Ok(())
     }
@@ -81,7 +81,7 @@ fn load(ctx: *mut scmp_filter_ctx) -> Result<()> {
     let res = unsafe { seccomp_load(ctx) };
     if res != 0 {
         let msg = "failed to load filter".to_string();
-        Err(ErrorKind::SeccompError(msg).into())
+        Err(Error::SeccompError(msg))
     } else {
         Ok(())
     }

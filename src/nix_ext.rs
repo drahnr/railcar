@@ -2,9 +2,9 @@
 use libc;
 use nix::errno::Errno;
 use nix::Result;
+use std::convert::TryInto;
 use std::ffi::CString;
 use std::os::unix::io::RawFd;
-use std::convert::TryInto;
 
 #[inline]
 pub fn lsetxattr(

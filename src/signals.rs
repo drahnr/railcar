@@ -1,4 +1,5 @@
 use crate::errors::*;
+use color_eyre::eyre::bail;
 use libc::c_int;
 use nix::sys::signal::{kill, raise, sigaction};
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal};
@@ -81,7 +82,7 @@ pub fn to_signal(signal: &str) -> Result<Signal> {
         "29" | "IO" | "SIGIO" => Signal::SIGIO,
         "30" | "PWR" | "SIGPWR" => Signal::SIGPWR,
         "31" | "SYS" | "SIGSYS" => Signal::SIGSYS,
-        _ => bail!{"{} is not a valid signal", signal},
+        s => Err(Error::InvalidSignal(s.to_string()))?,
     })
 }
 
@@ -105,9 +106,11 @@ pub fn raise_for_parent(signal: Signal) -> Result<()> {
     // make sure the signal is unblocked
     let mut s = SigSet::empty();
     s.add(signal);
-    s.thread_unblock().context_with(|| "failed to unblock signal")?;
+    s.thread_unblock()
+        .context_with(|| "failed to unblock signal")?;
     // raise the signal
-    raise(signal).context_with(|| format!("failed to raise signal {:?}", signal))?;
+    raise(signal)
+        .context_with(|| format!("failed to raise signal {:?}", signal))?;
     Ok(())
 }
 

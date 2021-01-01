@@ -1,8 +1,8 @@
 use crate::errors::*;
+use crate::nix_ext::lsetxattr;
 use nix::fcntl::{open, OFlag};
 use nix::sys::stat::Mode;
 use nix::unistd::{close, write};
-use crate::nix_ext::lsetxattr;
 use std::ffi::CString;
 
 const EXEC_PATH: &'static str = "/proc/self/attr/exec";

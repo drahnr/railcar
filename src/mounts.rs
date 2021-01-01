@@ -1,5 +1,7 @@
 use crate::cgroups;
 use crate::errors::*;
+use crate::nix_ext::fchdir;
+use crate::selinux::setfilecon;
 use nix::errno::Errno;
 use nix::fcntl::{open, OFlag};
 use nix::mount::MsFlags;
@@ -9,9 +11,7 @@ use nix::sys::stat::{Mode, SFlag};
 use nix::unistd::{chdir, chown, close, getcwd, pivot_root};
 use nix::unistd::{Gid, Uid};
 use nix::NixPath;
-use crate::nix_ext::fchdir;
 use oci::{LinuxDevice, LinuxDeviceType, Mount, Spec};
-use crate::selinux::setfilecon;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::fs::{canonicalize, create_dir_all, remove_file};
@@ -45,7 +45,7 @@ pub fn init_rootfs(
                     "invalid propogation value: {}",
                     linux.rootfs_propagation
                 );
-                Err(Error::from(ErrorKind::InvalidSpec(msg)))
+                Err(Error::InvalidSpec(msg))
             }
         },
         None => {
@@ -73,7 +73,7 @@ pub fn init_rootfs(
         //       is no good reason to allow this so we just forbid it
         if !m.destination.starts_with('/') || m.destination.contains("..") {
             let msg = format!("invalid mount destination: {}", m.destination);
-            return Err(ErrorKind::InvalidSpec(msg).into());
+            return Err(Error::InvalidSpec(msg));
         }
         let (flags, data) = parse_mount(m);
         if m.typ == "cgroup" {
@@ -232,7 +232,7 @@ fn mount_cgroups(
         } else {
             &mount_path[..]
         };
-        let dest = format!{"{}/{}", &m.destination, &base};
+        let dest = format! {"{}/{}", &m.destination, &base};
         let bm = Mount {
             source: source,
             typ: "bind".to_string(),
@@ -249,14 +249,14 @@ fn mount_cgroups(
         for k in key.split(',') {
             if k != key {
                 // try to create a symlink for combined strings
-                let dest = format!{"{}{}/{}", rootfs, &m.destination, &k};
+                let dest = format! {"{}{}/{}", rootfs, &m.destination, &k};
                 symlink(key, &dest)?;
             }
         }
     }
     // remount readonly if necessary
     if flags.contains(MsFlags::MS_RDONLY) {
-        let dest = format!{"{}{}", rootfs, &m.destination};
+        let dest = format! {"{}{}", rootfs, &m.destination};
         mount(
             Some(&*dest),
             &*dest,
@@ -299,15 +299,15 @@ fn mount_from(
     let d;
     if !label.is_empty() && m.typ != "proc" && m.typ != "sysfs" {
         if data.is_empty() {
-            d = format!{"context=\"{}\"", label};
+            d = format! {"context=\"{}\"", label};
         } else {
-            d = format!{"{},context=\"{}\"", data, label};
+            d = format! {"{},context=\"{}\"", data, label};
         }
     } else {
         d = data.to_string();
     }
 
-    let dest = format!{"{}{}", rootfs, &m.destination};
+    let dest = format! {"{}{}", rootfs, &m.destination};
 
     debug!(
         "mounting {} to {} as {} with data '{}'",
@@ -351,7 +351,7 @@ fn mount_from(
         mount(Some(&*src), &*dest, Some(&*m.typ), flags, Some(data))?;
         // warn if label cannot be set
         if let Err(e) = setfilecon(&dest, label) {
-            warn!{"could not set mount label of {} to {}: {}",
+            warn! {"could not set mount label of {} to {}: {}",
             &m.destination, &label, e};
         }
     }
@@ -364,7 +364,8 @@ fn mount_from(
                 | MsFlags::MS_PRIVATE
                 | MsFlags::MS_SHARED
                 | MsFlags::MS_SLAVE),
-        ) {
+        )
+    {
         let chain = || format!("remount of {} failed", &dest);
         mount(
             Some(&*dest),
@@ -372,7 +373,8 @@ fn mount_from(
             None::<&str>,
             flags | MsFlags::MS_REMOUNT,
             None::<&str>,
-        ).context_with(chain)?;
+        )
+        .context_with(chain)?;
     }
     Ok(())
 }
@@ -403,7 +405,7 @@ fn create_devices(devices: &[LinuxDevice], bind: bool) -> Result<()> {
     for dev in devices {
         if !dev.path.starts_with("/dev") || dev.path.contains("..") {
             let msg = format!("{} is not a valid device path", dev.path);
-            bail!(ErrorKind::InvalidSpec(msg));
+            bail!(Error::InvalidSpec(msg));
         }
         op(dev)?;
     }
@@ -436,7 +438,7 @@ fn to_sflag(t: LinuxDeviceType) -> Result<SFlag> {
         LinuxDeviceType::p => SFlag::S_IFIFO,
         LinuxDeviceType::a => {
             let msg = "type a is not allowed for linux device".to_string();
-            bail!(ErrorKind::InvalidSpec(msg));
+            bail!(Error::InvalidSpec(msg));
         }
     })
 }
@@ -479,7 +481,7 @@ fn bind_dev(dev: &LinuxDevice) -> Result<()> {
 fn mask_path(path: &str) -> Result<()> {
     if !path.starts_with('/') || path.contains("..") {
         let msg = format!("invalid maskedPath: {}", path);
-        return Err(ErrorKind::InvalidSpec(msg).into());
+        return Err(Error::InvalidSpec(msg).into());
     }
 
     if let Err(::nix::Error::Sys(errno)) = mount(
@@ -503,7 +505,7 @@ fn mask_path(path: &str) -> Result<()> {
 fn readonly_path(path: &str) -> Result<()> {
     if !path.starts_with('/') || path.contains("..") {
         let msg = format!("invalid readonlyPath: {}", path);
-        return Err(ErrorKind::InvalidSpec(msg).into());
+        return Err(Error::InvalidSpec(msg).into());
     }
     if let Err(e) = mount(
         Some(&path[1..]),

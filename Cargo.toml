@@ -3,6 +3,7 @@ name = "railcar"
 version = "1.0.4"
 authors = ["Vishvananda Ishaya Abrams <vish.ishaya@oracle.com>"]
 build = "build.rs"
+edition = "2018"
 
 [dependencies]
 caps = "0.5"

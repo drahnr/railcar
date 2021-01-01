@@ -6,21 +6,18 @@
 #[macro_use]
 extern crate clap;
 #[macro_use]
-extern crate error_chain;
-#[macro_use]
-extern crate lazy_static;
+extern crate scopeguard;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate scopeguard;
+// TODO
+// use log::{info, debug, trace, warn, error};
 
-use caps;
-use libc;
-use num_traits;
-use nix;
-use prctl;
-use oci;
-use seccomp_sys;
+#[macro_use]
+extern crate color_eyre;
+
+// use color_eyre::eyre::
+#[macro_use]
+extern crate lazy_static;
 
 mod capabilities;
 mod cgroups;
@@ -33,12 +30,14 @@ mod selinux;
 mod signals;
 mod sync;
 
-use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use crate::errors::*;
+use crate::nix_ext::{clearenv, putenv, setgroups, setrlimit};
+use crate::sync::Cond;
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use lazy_static::initialize;
 use nix::errno::Errno;
 use nix::fcntl::{open, OFlag};
-use nix::poll::{poll, PollFlags, PollFd};
+use nix::poll::{poll, PollFd, PollFlags};
 use nix::sched::{setns, unshare, CloneFlags};
 use nix::sys::signal::{SigSet, Signal};
 use nix::sys::socket::{accept, bind, connect, listen, sendmsg, socket};
@@ -50,7 +49,6 @@ use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{chdir, execvp, getpid, sethostname, setresgid, setresuid};
 use nix::unistd::{close, dup2, fork, pipe2, read, setsid, write, ForkResult};
 use nix::unistd::{Gid, Pid, Uid};
-use crate::nix_ext::{clearenv, putenv, setgroups, setrlimit};
 use oci::{Linux, LinuxIDMapping, LinuxRlimit, Spec};
 use oci::{LinuxDevice, LinuxDeviceType};
 use std::collections::HashMap;
@@ -60,65 +58,65 @@ use std::io::{Read, Write};
 use std::os::unix::fs::symlink;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::result::Result as StdResult;
-use crate::sync::Cond;
 
 lazy_static! {
     static ref DEFAULT_DEVICES: Vec<LinuxDevice> = {
         let v = vec![
-        LinuxDevice {
-            path: "/dev/null".to_string(),
-            typ: LinuxDeviceType::c,
-            major: 1,
-            minor: 3,
-            file_mode: Some(0o066),
-            uid: None,
-            gid: None,
-        },
-        LinuxDevice {
-            path: "/dev/zero".to_string(),
-            typ: LinuxDeviceType::c,
-            major: 1,
-            minor: 5,
-            file_mode: Some(0o066),
-            uid: None,
-            gid: None,
-        },
-        LinuxDevice {
-            path: "/dev/full".to_string(),
-            typ: LinuxDeviceType::c,
-            major: 1,
-            minor: 7,
-            file_mode: Some(0o066),
-            uid: None,
-            gid: None,
-        },
-        LinuxDevice {
-            path: "/dev/tty".to_string(),
-            typ: LinuxDeviceType::c,
-            major: 5,
-            minor: 0,
-            file_mode: Some(0o066),
-            uid: None,
-            gid: None,
-        },
-        LinuxDevice {
-            path: "/dev/urandom".to_string(),
-            typ: LinuxDeviceType::c,
-            major: 1,
-            minor: 9,
-            file_mode: Some(0o066),
-            uid: None,
-            gid: None,
-        },
-        LinuxDevice {
-            path: "/dev/random".to_string(),
-            typ: LinuxDeviceType::c,
-            major: 1,
-            minor: 8,
-            file_mode: Some(0o066),
-            uid: None,
-            gid: None,
-        }];
+            LinuxDevice {
+                path: "/dev/null".to_string(),
+                typ: LinuxDeviceType::c,
+                major: 1,
+                minor: 3,
+                file_mode: Some(0o066),
+                uid: None,
+                gid: None,
+            },
+            LinuxDevice {
+                path: "/dev/zero".to_string(),
+                typ: LinuxDeviceType::c,
+                major: 1,
+                minor: 5,
+                file_mode: Some(0o066),
+                uid: None,
+                gid: None,
+            },
+            LinuxDevice {
+                path: "/dev/full".to_string(),
+                typ: LinuxDeviceType::c,
+                major: 1,
+                minor: 7,
+                file_mode: Some(0o066),
+                uid: None,
+                gid: None,
+            },
+            LinuxDevice {
+                path: "/dev/tty".to_string(),
+                typ: LinuxDeviceType::c,
+                major: 5,
+                minor: 0,
+                file_mode: Some(0o066),
+                uid: None,
+                gid: None,
+            },
+            LinuxDevice {
+                path: "/dev/urandom".to_string(),
+                typ: LinuxDeviceType::c,
+                major: 1,
+                minor: 9,
+                file_mode: Some(0o066),
+                uid: None,
+                gid: None,
+            },
+            LinuxDevice {
+                path: "/dev/random".to_string(),
+                typ: LinuxDeviceType::c,
+                major: 1,
+                minor: 8,
+                file_mode: Some(0o066),
+                uid: None,
+                gid: None,
+            },
+        ];
         v
     };
 }
@@ -510,7 +508,8 @@ fn cmd_state(id: &str, state_dir: &str) -> Result<()> {
 fn cmd_create(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
     debug!("Performing create");
     let bundle = matches.value_of("bundle").unwrap();
-    chdir(&*bundle).context_with(|| format!("failed to chdir to {}", bundle))?;
+    chdir(&*bundle)
+        .context_with(|| format!("failed to chdir to {}", bundle))?;
     let dir = instance_dir(id, state_dir);
     debug!("creating state dir {}", &dir);
     if let Err(e) = create_dir(&dir) {
@@ -563,11 +562,13 @@ fn load_console_sockets() -> Result<(RawFd, RawFd)> {
 }
 
 fn finish_create(id: &str, dir: &str, matches: &ArgMatches) -> Result<()> {
-    let spec =
-        Spec::load(CONFIG).context_with(|| format!("failed to load {}", CONFIG))?;
+    let spec = Spec::load(CONFIG)
+        .context_with(|| format!("failed to load {}", CONFIG))?;
 
     let rootfs = canonicalize(&spec.root.path)
-        .context_with(|| format!{"failed to find root path {}", &spec.root.path})?
+        .context_with(
+            || format! {"failed to find root path {}", &spec.root.path},
+        )?
         .to_string_lossy()
         .into_owned();
 
@@ -667,7 +668,7 @@ fn finish_create(id: &str, dir: &str, matches: &ArgMatches) -> Result<()> {
             platform: spec.platform,
             process: spec.process,
             root: oci::Root {
-                path: rootfs,
+                path: rootfs.to_string(),
                 readonly: spec.root.readonly,
             },
             hostname: "".to_string(), // hostname not needed
@@ -693,8 +694,8 @@ fn cmd_start(id: &str, state_dir: &str) -> Result<()> {
     let dir = instance_dir(id, state_dir);
     chdir(&*dir).context_with(|| format!("instance {} doesn't exist", id))?;
 
-    let spec =
-        Spec::load(CONFIG).context_with(|| format!("failed to load {}", CONFIG))?;
+    let spec = Spec::load(CONFIG)
+        .context_with(|| format!("failed to load {}", CONFIG))?;
 
     let init_pid = get_init_pid()?;
 
@@ -729,7 +730,7 @@ fn cmd_start(id: &str, state_dir: &str) -> Result<()> {
         }
         let linux = spec.linux.as_ref().unwrap();
         let cpath = if linux.cgroups_path == "" {
-            format!{"/{}", id}
+            format! {"/{}", id}
         } else {
             linux.cgroups_path.clone()
         };
@@ -805,7 +806,8 @@ fn cmd_ps(id: &str, state_dir: &str) -> Result<()> {
     debug!("Performing ps");
     let dir = instance_dir(id, state_dir);
     chdir(&*dir).context_with(|| format!("instance {} doesn't exist", id))?;
-    let mut f = File::open(PROCESS_PID).context_with(|| "failed to find pid")?;
+    let mut f =
+        File::open(PROCESS_PID).context_with(|| "failed to find pid")?;
     let mut result = String::new();
     f.read_to_string(&mut result)?;
     // TODO: return any other execed processes
@@ -900,7 +902,7 @@ fn cmd_delete(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
     if let Ok(spec) = Spec::load(CONFIG) {
         let linux = spec.linux.as_ref().unwrap();
         let cpath = if linux.cgroups_path == "" {
-            format!{"/{}", id}
+            format! {"/{}", id}
         } else {
             linux.cgroups_path.clone()
         };
@@ -935,9 +937,10 @@ fn cmd_delete(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
 
 fn cmd_run(id: &str, matches: &ArgMatches) -> Result<()> {
     let bundle = matches.value_of("bundle").unwrap();
-    chdir(&*bundle).context_with(|| format!("failed to chdir to {}", bundle))?;
-    let spec =
-        Spec::load(CONFIG).context_with(|| format!("failed to load {}", CONFIG))?;
+    chdir(&*bundle)
+        .context_with(|| format!("failed to chdir to {}", bundle))?;
+    let spec = Spec::load(CONFIG)
+        .context_with(|| format!("failed to load {}", CONFIG))?;
 
     let child_pid = safe_run_container(
         id,
@@ -962,13 +965,14 @@ fn execute_hook(hook: &oci::Hook, state: &oci::State) -> Result<()> {
     match fork()? {
         ForkResult::Child => {
             close(rfd).context_with(|| "could not close rfd")?;
-            let (rstdin, wstdin) =
-                pipe2(OFlag::empty()).context_with(|| "failed to create pipe")?;
+            let (rstdin, wstdin) = pipe2(OFlag::empty())
+                .context_with(|| "failed to create pipe")?;
             // fork second child to execute hook
             match fork()? {
                 ForkResult::Child => {
                     close(0).context_with(|| "could not close stdin")?;
-                    dup2(rstdin, 0).context_with(|| "could not dup to stdin")?;
+                    dup2(rstdin, 0)
+                        .context_with(|| "could not dup to stdin")?;
                     close(rstdin).context_with(|| "could not close rstdin")?;
                     close(wstdin).context_with(|| "could not close wstdin")?;
                     do_exec(&hook.path, &hook.args, &hook.env)?;
@@ -1002,12 +1006,12 @@ fn execute_hook(hook: &oci::Hook, state: &oci::State) -> Result<()> {
             }
             // a timeout will cause a failure and child will be killed on exit
             if let Some(sig) = wait_for_pipe_sig(rfd, timeout)? {
-                let msg = format!{"hook exited with signal: {:?}", sig};
+                let msg = format! {"hook exited with signal: {:?}", sig};
                 return Err(Error::InvalidHook(msg));
             }
             let (exit_code, _) = wait_for_child(child)?;
             if exit_code != 0 {
-                let msg = format!{"hook exited with exit code: {}", exit_code};
+                let msg = format! {"hook exited with exit code: {}", exit_code};
                 return Err(Error::InvalidHook(msg));
             }
         }
@@ -1094,7 +1098,9 @@ fn run_container(
             cf |= space;
         } else {
             let fd = open(&*ns.path, OFlag::empty(), Mode::empty())
-                .context_with(|| format!("failed to open file for {:?}", space))?;
+                .context_with(|| {
+                    format!("failed to open file for {:?}", space)
+                })?;
             to_enter.push((space, fd));
         }
     }
@@ -1104,7 +1110,7 @@ fn run_container(
     }
 
     let cpath = if linux.cgroups_path == "" {
-        format!{"/{}", id}
+        format! {"/{}", id}
     } else {
         linux.cgroups_path.clone()
     };
@@ -1141,7 +1147,8 @@ fn run_container(
             mount_fd = fd;
             continue;
         }
-        setns(fd, space).context_with(|| format!("failed to enter {:?}", space))?;
+        setns(fd, space)
+            .context_with(|| format!("failed to enter {:?}", space))?;
         close(fd)?;
         if space == CloneFlags::CLONE_NEWUSER {
             setid(Uid::from_raw(0), Gid::from_raw(0))
@@ -1188,7 +1195,8 @@ fn run_container(
     }
 
     if cf.contains(CloneFlags::CLONE_NEWNS) {
-        mounts::pivot_rootfs(&*rootfs).context_with(|| "failed to pivot rootfs")?;
+        mounts::pivot_rootfs(&*rootfs)
+            .context_with(|| "failed to pivot rootfs")?;
 
         // only set sysctls in newns
         for (key, value) in &linux.sysctl {
@@ -1201,8 +1209,10 @@ fn run_container(
     }
 
     if csocketfd != -1 {
-        let mut slave: libc::c_int = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-        let mut master: libc::c_int = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+        let mut slave: libc::c_int =
+            unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+        let mut master: libc::c_int =
+            unsafe { std::mem::MaybeUninit::uninit().assume_init() };
         let ret = unsafe {
             libc::openpty(
                 &mut master,
@@ -1240,7 +1250,8 @@ fn run_container(
     }
 
     if cf.contains(CloneFlags::CLONE_NEWNS) {
-        mounts::finish_rootfs(spec).context_with(|| "failed to finish rootfs")?;
+        mounts::finish_rootfs(spec)
+            .context_with(|| "failed to finish rootfs")?;
     }
 
     // change to specified working directory
@@ -1366,11 +1377,13 @@ fn fork_first(
                 write_mappings(
                     &format!("/proc/{}/uid_map", child),
                     &linux.uid_mappings,
-                ).context_with(|| "failed to write uid mappings")?;
+                )
+                .context_with(|| "failed to write uid mappings")?;
                 write_mappings(
                     &format!("/proc/{}/gid_map", child),
                     &linux.gid_mappings,
-                ).context_with(|| "failed to write gid mappings")?;
+                )
+                .context_with(|| "failed to write gid mappings")?;
             }
             // setup cgroups
             let schild = child.to_string();
@@ -1399,8 +1412,9 @@ fn fork_first(
                 if let Some(ref hooks) = spec.hooks {
                     let st = state(id, "running", init_pid, &spec.root.path);
                     for h in &hooks.prestart {
-                        execute_hook(h, &st)
-                            .context_with(|| "failed to execute prestart hooks")?;
+                        execute_hook(h, &st).context_with(|| {
+                            "failed to execute prestart hooks"
+                        })?;
                     }
                 }
                 wait_for_pipe_zero(rfd, -1)?;
@@ -1500,7 +1514,8 @@ fn do_init(wfd: RawFd, daemonize: bool) -> Result<()> {
                     // raising from pid 1 doesn't work as you would
                     // expect, so write signal to pipe.
                     let data: &[u8] = &[s as u8];
-                    write(wfd, data).context_with(|| "failed to write signal")?;
+                    write(wfd, data)
+                        .context_with(|| "failed to write signal")?;
                 }
                 close(wfd).context_with(|| "could not close wfd")?;
             }
@@ -1550,7 +1565,7 @@ fn write_mappings(path: &str, maps: &[LinuxIDMapping]) -> Result<()> {
 }
 
 fn set_sysctl(key: &str, value: &str) -> Result<()> {
-    let path = format!{"/proc/sys/{}", key.replace(".", "/")};
+    let path = format! {"/proc/sys/{}", key.replace(".", "/")};
     let fd = match open(&*path, OFlag::O_RDWR, Mode::empty()) {
         Err(::nix::Error::Sys(errno)) => {
             if errno != Errno::ENOENT {
@@ -1657,7 +1672,7 @@ fn wait_for_pipe_zero(rfd: RawFd, timeout: i32) -> Result<()> {
         return Err(Error::PipeClosed(msg));
     }
     if result[0] != 0 {
-        let msg = format!{"got {} from pipe instead of 0", result[0]};
+        let msg = format! {"got {} from pipe instead of 0", result[0]};
         return Err(Error::InvalidValue(msg));
     }
     Ok(())
@@ -1768,8 +1783,8 @@ fn set_name(name: &str) -> Result<()> {
         Ok(_) => (),
     };
     unsafe {
-        let init =
-            std::ffi::CString::new(name).context_with(|| "invalid process name")?;
+        let init = std::ffi::CString::new(name)
+            .context_with(|| "invalid process name")?;
         let len = std::ffi::CStr::from_ptr(*ARGV).to_bytes().len();
         // after fork, ARGV points to the thread's local
         // copy of arg0.
@@ -1782,8 +1797,5 @@ fn set_name(name: &str) -> Result<()> {
 
 #[cfg(not(feature = "nightly"))]
 fn set_name(name: &str) -> Result<()> {
-    if let Err(e) = prctl::set_name(name) {
-        bail!(format!("set name returned {}", e));
-    };
-    Ok(())
+    prctl::set_name(name).map_err(|e| Error::SetNameFailed(e))
 }
