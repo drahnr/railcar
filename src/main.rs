@@ -539,7 +539,7 @@ fn finish_create(id: &str, dir: &str, matches: &ArgMatches) -> Result<()> {
                 let path = format!("/proc/{}/ns/{}", child_pid, name);
                 let n = oci::LinuxNamespace {
                     typ: ns.typ,
-                    path: path,
+                    path,
                 };
                 namespaces.push(n);
             }
