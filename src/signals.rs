@@ -1,5 +1,4 @@
 use crate::errors::*;
-use color_eyre::eyre::bail;
 use libc::c_int;
 use nix::sys::signal::{kill, raise, sigaction};
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal};

@@ -1,5 +1,3 @@
-pub use color_eyre::eyre::{anyhow, bail, Context, ContextCompat};
-
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug)]
@@ -79,4 +77,7 @@ pub enum Error {
 
     #[error("Unblocking signal failed")]
     SigUnblockFailed(#[source] ::nix::Error),
+
+    #[error("Dumpable returned {0:?}")]
+    SetDumpableFailed(i32),
 }

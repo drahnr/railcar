@@ -4,16 +4,11 @@
 #![cfg_attr(feature = "nightly", feature(ord_max_min))]
 
 #[macro_use]
-extern crate clap;
-#[macro_use]
 extern crate scopeguard;
 #[macro_use]
 extern crate log;
 // TODO
 // use log::{info, debug, trace, warn, error};
-
-#[macro_use]
-extern crate color_eyre;
 
 // use color_eyre::eyre::
 #[macro_use]

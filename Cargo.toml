@@ -30,3 +30,6 @@ name = "railcar"
 [profile.release]
 lto = true
 panic = 'abort'
+
+[profile.dev.package.backtrace]
+opt-level = 3
