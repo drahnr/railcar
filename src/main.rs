@@ -7,12 +7,12 @@ use railcar::consts::*;
 use railcar::errors::Error;
 use railcar::*;
 
+#[allow(unused_imports)]
 use color_eyre::eyre::{
-    bail, eyre, ContextCompat, Error as EyreError, Result, WrapErr,
+    bail, ContextCompat, Error as EyreError, Result, WrapErr,
 };
 
 use std::convert::TryFrom;
-use std::error::Error as StdError;
 
 #[macro_use]
 extern crate clap;
@@ -22,9 +22,6 @@ extern crate scopeguard;
 extern crate log;
 // TODO
 // use log::{info, debug, trace, warn, error};
-
-#[macro_use]
-extern crate lazy_static;
 
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use lazy_static::initialize;
@@ -43,7 +40,7 @@ use nix::unistd::{chdir, execvp, getpid, sethostname, setresgid, setresuid};
 use nix::unistd::{close, dup2, fork, pipe2, read, setsid, write, ForkResult};
 use nix::unistd::{Gid, Pid, Uid};
 use oci::{Linux, LinuxIDMapping, LinuxRlimit, Spec};
-use oci::{LinuxDevice, LinuxDeviceType};
+
 use railcar::nix_ext::{clearenv, putenv, setgroups, setrlimit};
 use railcar::sync::Cond;
 use std::collections::HashMap;
@@ -537,10 +534,7 @@ fn finish_create(id: &str, dir: &str, matches: &ArgMatches) -> Result<()> {
             let space = CloneFlags::from_bits_truncate(ns.typ as i32);
             if let Some(name) = NAMESPACES.get(&space) {
                 let path = format!("/proc/{}/ns/{}", child_pid, name);
-                let n = oci::LinuxNamespace {
-                    typ: ns.typ,
-                    path: path,
-                };
+                let n = oci::LinuxNamespace { typ: ns.typ, path };
                 namespaces.push(n);
             }
         }

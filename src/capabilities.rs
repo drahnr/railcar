@@ -1,4 +1,4 @@
-use crate::errors::{Error, Result};
+use crate::errors::Result;
 use caps::*;
 use oci::{LinuxCapabilities, LinuxCapabilityType};
 
