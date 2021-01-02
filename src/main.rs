@@ -3,14 +3,16 @@
 #![cfg_attr(feature = "nightly", feature(start))]
 #![cfg_attr(feature = "nightly", feature(ord_max_min))]
 
-use railcar::*;
-use railcar::errors::{Error};
 use railcar::consts::*;
+use railcar::errors::Error;
+use railcar::*;
 
-use color_eyre::eyre::{bail, eyre, Error as EyreError, Result, ContextCompat, WrapErr};
+use color_eyre::eyre::{
+    bail, eyre, ContextCompat, Error as EyreError, Result, WrapErr,
+};
 
-use std::error::Error as StdError;
 use std::convert::TryFrom;
+use std::error::Error as StdError;
 
 #[macro_use]
 extern crate clap;
@@ -24,8 +26,6 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 
-use railcar::nix_ext::{clearenv, putenv, setgroups, setrlimit};
-use railcar::sync::Cond;
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use lazy_static::initialize;
 use nix::errno::Errno;
@@ -44,6 +44,8 @@ use nix::unistd::{close, dup2, fork, pipe2, read, setsid, write, ForkResult};
 use nix::unistd::{Gid, Pid, Uid};
 use oci::{Linux, LinuxIDMapping, LinuxRlimit, Spec};
 use oci::{LinuxDevice, LinuxDeviceType};
+use railcar::nix_ext::{clearenv, putenv, setgroups, setrlimit};
+use railcar::sync::Cond;
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs::{canonicalize, create_dir, create_dir_all, remove_dir_all, File};
@@ -291,8 +293,9 @@ fn run() -> Result<()> {
 
     let state_dir = matches.value_of("r").unwrap().to_string();
     debug!("ensuring railcar state dir {}", &state_dir);
-    create_dir_all(&state_dir)
-        .with_context(|| format!("ensuring railcar state dir {} failed", &state_dir))?;
+    create_dir_all(&state_dir).with_context(|| {
+        format!("ensuring railcar state dir {} failed", &state_dir)
+    })?;
 
     match matches.subcommand() {
         ("create", Some(create_matches)) => cmd_create(
@@ -818,7 +821,9 @@ fn cmd_delete(id: &str, state_dir: &str, matches: &ArgMatches) -> Result<()> {
     debug!("removing state dir {}", &dir);
     if let Err(e) = remove_dir_all(&dir) {
         if e.kind() != std::io::ErrorKind::NotFound {
-            Err(e).with_context(|| format!("removing state dir {} failed", &dir))?;
+            Err(e).with_context(|| {
+                format!("removing state dir {} failed", &dir)
+            })?;
         }
         bail!("State dir for {} disappeared", id);
     }
@@ -962,7 +967,9 @@ fn run_container(
         };
     }
 
-    let linux = spec.linux.as_ref().ok_or_else(|| Error::InvalidSpec("linux config is empty".to_string()))?;
+    let linux = spec.linux.as_ref().ok_or_else(|| {
+        Error::InvalidSpec("linux config is empty".to_string())
+    })?;
 
     // initialize static variables before forking
     initialize(&DEFAULT_DEVICES);
@@ -1068,15 +1075,13 @@ fn run_container(
         // notify first parent that it can continue
         debug!("writing zero to pipe to trigger prestart");
         let data: &[u8] = &[0];
-        write(wfd, data)
-            .with_context(|| "failed to write zero")?;
+        write(wfd, data).with_context(|| "failed to write zero")?;
     }
 
     if mount_fd != -1 {
-        setns(mount_fd, CloneFlags::CLONE_NEWNS)
-            .with_context(|| {
-                "failed to enter CloneFlags::CLONE_NEWNS".to_string()
-            })?;
+        setns(mount_fd, CloneFlags::CLONE_NEWNS).with_context(|| {
+            "failed to enter CloneFlags::CLONE_NEWNS".to_string()
+        })?;
         close(mount_fd)?;
     }
 
@@ -1331,7 +1336,7 @@ fn fork_first(
 fn fork_enter_pid(init: bool, daemonize: bool) -> Result<()> {
     // do the first fork right away because we must fork before we can
     // mount proc. The child will be in the pid namespace.
-match unsafe { fork() } ? {
+    match unsafe { fork() }? {
         ForkResult::Child => {
             if init {
                 set_name("rc-init")?;
@@ -1490,11 +1495,7 @@ fn reopen_dev_null() -> Result<()> {
     Ok(())
 }
 
-fn wait_for_pipe_vec(
-    rfd: RawFd,
-    timeout: i32,
-    num: usize,
-) -> Result<Vec<u8>> {
+fn wait_for_pipe_vec(rfd: RawFd, timeout: i32, num: usize) -> Result<Vec<u8>> {
     let mut result = Vec::new();
     while result.len() < num {
         let pfds =
@@ -1508,9 +1509,7 @@ fn wait_for_pipe_vec(
             }
             Ok(n) => {
                 if n == 0 {
-                    return Err(Error::Timeout {
-                        timeout
-                    })?;
+                    return Err(Error::Timeout { timeout })?;
                 }
             }
         }
@@ -1520,7 +1519,9 @@ fn wait_for_pipe_vec(
             continue;
         }
         if events.unwrap() == PollFlags::POLLNVAL {
-            Err(Error::PipeClosed("file descriptor closed unexpectedly".to_string()))?;
+            Err(Error::PipeClosed(
+                "file descriptor closed unexpectedly".to_string(),
+            ))?;
         }
         if !events
             .unwrap()
@@ -1555,10 +1556,14 @@ fn wait_for_pipe_sig(rfd: RawFd, timeout: i32) -> Result<Option<Signal>> {
 fn wait_for_pipe_zero(rfd: RawFd, timeout: i32) -> Result<()> {
     let result = wait_for_pipe_vec(rfd, timeout, 1)?;
     if result.len() < 1 {
-        Err(Error::PipeClosed("file descriptor closed unexpectedly".to_string()))?;
+        Err(Error::PipeClosed(
+            "file descriptor closed unexpectedly".to_string(),
+        ))?;
     }
     if result[0] != 0 {
-        Err(Error::InvalidValue(format! {"got {} from pipe instead of 0", result[0]}))?;
+        Err(Error::InvalidValue(
+            format! {"got {} from pipe instead of 0", result[0]},
+        ))?;
     }
     Ok(())
 }
@@ -1682,7 +1687,6 @@ fn set_name(name: &str) -> Result<()> {
 
 #[cfg(not(feature = "nightly"))]
 fn set_name(name: &str) -> Result<()> {
-    prctl::set_name(name)
-        .map_err(Error::SetNameFailed)?;
+    prctl::set_name(name).map_err(Error::SetNameFailed)?;
     Ok(())
 }
