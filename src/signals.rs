@@ -4,6 +4,7 @@ use libc::c_int;
 use nix::sys::signal::{kill, raise, sigaction};
 use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal};
 use nix::unistd::Pid;
+use std::convert::TryFrom;
 
 pub fn pass_signals(child_pid: Pid) -> Result<()> {
     unsafe {
@@ -24,19 +25,19 @@ extern "C" fn child_handler(signo: c_int) {
     unsafe {
         let _ = kill(
             CHILD_PID.unwrap_or(Pid::from_raw(0)),
-            Signal::from_c_int(signo).unwrap(),
+            Signal::try_from(signo).unwrap(),
         );
     }
 }
 
 unsafe fn set_handler(handler: SigHandler) -> Result<()> {
     let a = SigAction::new(handler, SaFlags::empty(), SigSet::all());
-    sigaction(Signal::SIGTERM, &a).context_with(|| "failed to sigaction")?;
-    sigaction(Signal::SIGQUIT, &a).context_with(|| "failed to sigaction")?;
-    sigaction(Signal::SIGINT, &a).context_with(|| "failed to sigaction")?;
-    sigaction(Signal::SIGHUP, &a).context_with(|| "failed to sigaction")?;
-    sigaction(Signal::SIGUSR1, &a).context_with(|| "failed to sigaction")?;
-    sigaction(Signal::SIGUSR2, &a).context_with(|| "failed to sigaction")?;
+    sigaction(Signal::SIGTERM, &a).map_err(Error::SigAddingActionFailed)?;
+    sigaction(Signal::SIGQUIT, &a).map_err(Error::SigAddingActionFailed)?;
+    sigaction(Signal::SIGINT, &a).map_err(Error::SigAddingActionFailed)?;
+    sigaction(Signal::SIGHUP, &a).map_err(Error::SigAddingActionFailed)?;
+    sigaction(Signal::SIGUSR1, &a).map_err(Error::SigAddingActionFailed)?;
+    sigaction(Signal::SIGUSR2, &a).map_err(Error::SigAddingActionFailed)?;
     Ok(())
 }
 
@@ -100,17 +101,16 @@ pub fn raise_for_parent(signal: Signal) -> Result<()> {
         let a =
             SigAction::new(SigHandler::SigDfl, SaFlags::empty(), SigSet::all());
         unsafe {
-            sigaction(signal, &a).context_with(|| "failed to sigaction")?;
+            sigaction(signal, &a).map_err(Error::SigAddingActionFailed)?;
         }
     }
     // make sure the signal is unblocked
     let mut s = SigSet::empty();
     s.add(signal);
-    s.thread_unblock()
-        .context_with(|| "failed to unblock signal")?;
+    s.thread_unblock().map_err(Error::SigUnblockFailed)?;
+
     // raise the signal
-    raise(signal)
-        .context_with(|| format!("failed to raise signal {:?}", signal))?;
+    raise(signal).map_err(|e| Error::SigRaiseFailed(e, signal))?;
     Ok(())
 }
 

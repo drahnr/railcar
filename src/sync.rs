@@ -1,4 +1,4 @@
-use super::Result;
+use crate::errors::Result;
 use nix::fcntl::OFlag;
 use nix::unistd::{close, pipe2, read};
 use std::os::unix::io::RawFd;

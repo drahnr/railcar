@@ -1,3 +1,4 @@
+use crate::errors::{Error, Result};
 use caps::*;
 use oci::{LinuxCapabilities, LinuxCapabilityType};
 
@@ -13,12 +14,13 @@ fn to_set(caps: &[LinuxCapabilityType]) -> CapsHashSet {
     capabilities
 }
 
-pub fn reset_effective() -> crate::Result<()> {
-    set(None, CapSet::Effective, ::caps::all())?;
+pub fn reset_effective() -> Result<()> {
+    let all = ::caps::all();
+    set(None, CapSet::Effective, &all)?;
     Ok(())
 }
 
-pub fn drop_privileges(cs: &LinuxCapabilities) -> crate::Result<()> {
+pub fn drop_privileges(cs: &LinuxCapabilities) -> Result<()> {
     let all = ::caps::all();
     debug!("dropping bounding capabilities to {:?}", cs.bounding);
     // drop excluded caps from the bounding set
@@ -26,10 +28,10 @@ pub fn drop_privileges(cs: &LinuxCapabilities) -> crate::Result<()> {
         drop(None, CapSet::Bounding, *c)?;
     }
     // set other sets for current process
-    set(None, CapSet::Effective, to_set(&cs.effective))?;
-    set(None, CapSet::Permitted, to_set(&cs.permitted))?;
-    set(None, CapSet::Inheritable, to_set(&cs.inheritable))?;
-    if let Err(e) = set(None, CapSet::Ambient, to_set(&cs.ambient)) {
+    set(None, CapSet::Effective, &to_set(&cs.effective))?;
+    set(None, CapSet::Permitted, &to_set(&cs.permitted))?;
+    set(None, CapSet::Inheritable, &to_set(&cs.inheritable))?;
+    if let Err(e) = set(None, CapSet::Ambient, &to_set(&cs.ambient)) {
         warn!("failed to set ambient capabilities: {}", e);
     }
     Ok(())

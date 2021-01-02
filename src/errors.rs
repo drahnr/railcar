@@ -42,4 +42,41 @@ pub enum Error {
 
     #[error("Set name returned {0}")]
     SetNameFailed(i32),
+
+    // TODO extract into sub-error
+    #[error("Create cgroup dir failed")]
+    CreateCGroupDirFailed(#[source] ::std::io::Error),
+
+    #[error("Create cgroup dir failed")]
+    RemoveCGroupDirFailed(#[source] ::std::io::Error),
+
+    #[error("Failed to find file {0} in parent cgroups")]
+    CGroupParentsNotIncludingFile(String),
+
+    #[error("Failed to copy parent cgroup")]
+    CGroupFailedToCopyParent(#[source] ::std::io::Error),
+
+    #[error("Mount failed to mask {1}")]
+    MountFailedToMask(#[source] ::nix::Error, String),
+
+    #[error("Mount failed to make path read only {1}")]
+    MountMakeReadOnlyFailed(#[source] ::nix::Error, String),
+
+    #[error("Mount failed {1}")]
+    MountFailed(#[source] ::nix::Error, String),
+
+    #[error("Mount removing /dev/ptmx failed")]
+    MountRemovePtmxDeviceFailed(#[source] ::std::io::Error),
+
+    #[error("Mount remount of {1} failed")]
+    MountRemountFailed(#[source] ::nix::Error, String),
+
+    #[error("Attaching action to signal failed")]
+    SigAddingActionFailed(#[source] ::nix::Error),
+
+    #[error("Raising signal {1:?} failed")]
+    SigRaiseFailed(#[source] ::nix::Error, ::nix::sys::signal::Signal),
+
+    #[error("Unblocking signal failed")]
+    SigUnblockFailed(#[source] ::nix::Error),
 }

@@ -18,12 +18,14 @@ oci = { path = "oci" }
 prctl = "1"
 scopeguard = "1"
 seccomp-sys = "0.1.3"
-lazy_static = "1"
+lazy_static = "1.4"
 color-eyre = "0.5"
 
 [features]
 nightly = []
 
+[[bin]]
+name = "railcar"
 
 [profile.release]
 lto = true

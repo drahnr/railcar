@@ -3,6 +3,8 @@
 #![cfg_attr(feature = "nightly", feature(start))]
 #![cfg_attr(feature = "nightly", feature(ord_max_min))]
 
+use railcar::*;
+
 #[macro_use]
 extern crate clap;
 #[macro_use]
@@ -19,21 +21,11 @@ extern crate color_eyre;
 #[macro_use]
 extern crate lazy_static;
 
-mod capabilities;
-mod cgroups;
-mod errors;
-mod logger;
-mod mounts;
-mod nix_ext;
-mod seccomp;
-mod selinux;
-mod signals;
-mod sync;
-
-use crate::errors::*;
+use crate::errors::Error;
 use crate::nix_ext::{clearenv, putenv, setgroups, setrlimit};
 use crate::sync::Cond;
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use color_eyre::eyre::*;
 use lazy_static::initialize;
 use nix::errno::Errno;
 use nix::fcntl::{open, OFlag};
@@ -58,87 +50,6 @@ use std::io::{Read, Write};
 use std::os::unix::fs::symlink;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::result::Result as StdResult;
-
-lazy_static! {
-    static ref DEFAULT_DEVICES: Vec<LinuxDevice> = {
-        let v = vec![
-            LinuxDevice {
-                path: "/dev/null".to_string(),
-                typ: LinuxDeviceType::c,
-                major: 1,
-                minor: 3,
-                file_mode: Some(0o066),
-                uid: None,
-                gid: None,
-            },
-            LinuxDevice {
-                path: "/dev/zero".to_string(),
-                typ: LinuxDeviceType::c,
-                major: 1,
-                minor: 5,
-                file_mode: Some(0o066),
-                uid: None,
-                gid: None,
-            },
-            LinuxDevice {
-                path: "/dev/full".to_string(),
-                typ: LinuxDeviceType::c,
-                major: 1,
-                minor: 7,
-                file_mode: Some(0o066),
-                uid: None,
-                gid: None,
-            },
-            LinuxDevice {
-                path: "/dev/tty".to_string(),
-                typ: LinuxDeviceType::c,
-                major: 5,
-                minor: 0,
-                file_mode: Some(0o066),
-                uid: None,
-                gid: None,
-            },
-            LinuxDevice {
-                path: "/dev/urandom".to_string(),
-                typ: LinuxDeviceType::c,
-                major: 1,
-                minor: 9,
-                file_mode: Some(0o066),
-                uid: None,
-                gid: None,
-            },
-            LinuxDevice {
-                path: "/dev/random".to_string(),
-                typ: LinuxDeviceType::c,
-                major: 1,
-                minor: 8,
-                file_mode: Some(0o066),
-                uid: None,
-                gid: None,
-            },
-        ];
-        v
-    };
-}
-
-lazy_static! {
-    static ref NAMESPACES: HashMap<CloneFlags, &'static str> = {
-        let mut result = HashMap::new();
-        result.insert(CloneFlags::CLONE_NEWIPC, "ipc");
-        result.insert(CloneFlags::CLONE_NEWUTS, "uts");
-        result.insert(CloneFlags::CLONE_NEWNET, "net");
-        result.insert(CloneFlags::CLONE_NEWPID, "pid");
-        result.insert(CloneFlags::CLONE_NEWNS, "mnt");
-        result.insert(CloneFlags::CLONE_NEWCGROUP, "cgroup");
-        result.insert(CloneFlags::CLONE_NEWUSER, "user");
-        result
-    };
-}
-
-const CONFIG: &'static str = "config.json";
-const INIT_PID: &'static str = "init.pid";
-const PROCESS_PID: &'static str = "process.pid";
-const TSOCKETFD: RawFd = 9;
 
 #[cfg(feature = "nightly")]
 static mut ARGC: isize = 0 as isize;

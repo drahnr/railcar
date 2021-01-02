@@ -1,3 +1,4 @@
+use crate::consts::*;
 use crate::errors::*;
 use lazy_static::initialize;
 use nix::unistd::Pid;
@@ -30,8 +31,7 @@ pub fn apply(
         };
         // ensure cgroup dir
         debug! {"creating cgroup dir {}", &dir};
-        let chain = || format!("create cgroup dir {} failed", &dir);
-        create_dir_all(&dir).context_with(chain)?;
+        create_dir_all(&dir).map_err(|e| Error::CreateCGroupDirFailed(e))?;
         // enter cgroups
         for k in key.split(',') {
             if let Some(cgroup_apply) = APPLIES.get(k) {
@@ -57,8 +57,7 @@ pub fn remove(cgroups_path: &str) -> Result<()> {
         };
         debug! {"removing cgroup dir {}", &dir};
         // remove cgroup dir
-        let chain = || format!("remove cgroup dir {} failed", &dir);
-        remove_dir(&dir).context_with(chain)?;
+        remove_dir(&dir).map_err(|e| Error::RemoveCGroupDirFailed(e))?;
     }
     Ok(())
 }
@@ -316,11 +315,11 @@ lazy_static! {
 }
 
 fn copy_parent(dir: &str, file: &str) -> Result<()> {
-    let parent = if let Some(o) = dir.rfind('/') {
-        &dir[..o]
-    } else {
-        bail! {"failed to find {} in parent cgroups", file};
-    };
+    let parent = dir
+        .rfind('/')
+        .ok_or_else(|| Error::CGroupParentsNotIncludingFile(file.to_string()))
+        .map(|o| &dir[..o])?;
+
     match read_file(parent, file) {
         Err(Error::Io(e)) => {
             if e.kind() == ::std::io::ErrorKind::NotFound {
@@ -329,7 +328,7 @@ fn copy_parent(dir: &str, file: &str) -> Result<()> {
                 return copy_parent(dir, file);
             }
             let msg = "failed to copy parent cgroup".to_string();
-            Err(e).context_with(|| msg)
+            Err(Error::CGroupFailedToCopyParent(e))
         }
         Err(e) => Err(e),
         Ok(data) => write_file(dir, file, &data),
@@ -487,7 +486,7 @@ fn write_device(d: &LinuxDeviceCgroup, dir: &str) -> Result<()> {
         LinuxDeviceType::a => "a",
         _ => {
             let msg = "invalid cgroup device type".to_string();
-            bail!(Error::InvalidSpec(msg));
+            return Err(Error::InvalidSpec(msg));
         }
     };
     let major = if let Some(x) = d.major {
@@ -508,7 +507,7 @@ fn devices_apply(r: &LinuxResources, dir: &str) -> Result<()> {
     for d in &r.devices {
         write_device(d, dir)?;
     }
-    for d in super::DEFAULT_DEVICES.iter() {
+    for d in DEFAULT_DEVICES.iter() {
         let ld = LinuxDeviceCgroup {
             allow: true,
             typ: d.typ,

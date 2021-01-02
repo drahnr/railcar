@@ -1,4 +1,5 @@
 use crate::cgroups;
+use crate::consts::*;
 use crate::errors::*;
 use crate::nix_ext::fchdir;
 use crate::selinux::setfilecon;
@@ -344,8 +345,10 @@ fn mount_from(
         mount(Some(&*src), &*dest, Some(&*m.typ), flags, Some(&*d))
     {
         if errno != Errno::EINVAL {
-            let chain = || format!("mount of {} failed", &m.destination);
-            return Err(::nix::Error::Sys(errno)).context_with(chain)?;
+            return Err(Error::MountMakeReadOnlyFailed(
+                ::nix::Error::Sys(errno),
+                m.destination.clone(),
+            ));
         }
         // try again without mount label
         mount(Some(&*src), &*dest, Some(&*m.typ), flags, Some(data))?;
@@ -366,7 +369,6 @@ fn mount_from(
                 | MsFlags::MS_SLAVE),
         )
     {
-        let chain = || format!("remount of {} failed", &dest);
         mount(
             Some(&*dest),
             &*dest,
@@ -374,7 +376,7 @@ fn mount_from(
             flags | MsFlags::MS_REMOUNT,
             None::<&str>,
         )
-        .context_with(chain)?;
+        .map_err(|e| Error::MountRemountFailed(e, dest.clone()))?;
     }
     Ok(())
 }
@@ -399,13 +401,13 @@ fn create_devices(devices: &[LinuxDevice], bind: bool) -> Result<()> {
     let op: fn(&LinuxDevice) -> Result<()> =
         if bind { bind_dev } else { mknod_dev };
     let old = umask(Mode::from_bits_truncate(0o000));
-    for dev in super::DEFAULT_DEVICES.iter() {
+    for dev in DEFAULT_DEVICES.iter() {
         op(dev)?;
     }
     for dev in devices {
         if !dev.path.starts_with("/dev") || dev.path.contains("..") {
             let msg = format!("{} is not a valid device path", dev.path);
-            bail!(Error::InvalidSpec(msg));
+            return Err(Error::InvalidSpec(msg));
         }
         op(dev)?;
     }
@@ -416,8 +418,7 @@ fn create_devices(devices: &[LinuxDevice], bind: bool) -> Result<()> {
 fn ensure_ptmx() -> Result<()> {
     if let Err(e) = remove_file("dev/ptmx") {
         if e.kind() != ::std::io::ErrorKind::NotFound {
-            let msg = "could not delete /dev/ptmx".to_string();
-            Err(e).context_with(|| msg)?;
+            return Err(Error::MountRemovePtmxDeviceFailed(e));
         }
     }
     symlink("pts/ptmx", "dev/ptmx")?;
@@ -438,7 +439,7 @@ fn to_sflag(t: LinuxDeviceType) -> Result<SFlag> {
         LinuxDeviceType::p => SFlag::S_IFIFO,
         LinuxDeviceType::a => {
             let msg = "type a is not allowed for linux device".to_string();
-            bail!(Error::InvalidSpec(msg));
+            return Err(Error::InvalidSpec(msg));
         }
     })
 }
@@ -493,8 +494,10 @@ fn mask_path(path: &str) -> Result<()> {
     ) {
         // ignore ENOENT and ENOTDIR: path to mask doesn't exist
         if errno != Errno::ENOENT && errno != Errno::ENOTDIR {
-            let msg = format!("could not mask {}", path);
-            Err(::nix::Error::Sys(errno)).context_with(|| msg)?;
+            return Err(Error::MountFailedToMask(
+                ::nix::Error::Sys(errno),
+                path.to_string(),
+            ));
         } else {
             debug!("ignoring mask of {} because it doesn't exist", path);
         }
@@ -519,7 +522,7 @@ fn readonly_path(path: &str) -> Result<()> {
                 // ignore ENOENT: path to make read only doesn't exist
                 if errno != Errno::ENOENT {
                     let msg = format!("could not readonly {}", path);
-                    Err(e).context_with(|| msg)?;
+                    return Err(Error::MountMakeReadOnlyFailed(e, msg));
                 }
                 debug!("ignoring remount of {} because it doesn't exist", path);
                 return Ok(());
