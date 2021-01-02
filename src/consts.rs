@@ -1,9 +1,9 @@
 use lazy_static::lazy_static;
 
 use ::oci::{LinuxDevice, LinuxDeviceType};
-use nix::sched::{setns, unshare, CloneFlags};
+use nix::sched::CloneFlags;
 use std::collections::HashMap;
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::io::RawFd;
 
 lazy_static! {
     pub static ref DEFAULT_DEVICES: Vec<LinuxDevice> = {

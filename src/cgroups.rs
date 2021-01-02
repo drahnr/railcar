@@ -327,7 +327,6 @@ fn copy_parent(dir: &str, file: &str) -> Result<()> {
                 copy_parent(parent, file)?;
                 return copy_parent(dir, file);
             }
-            let msg = "failed to copy parent cgroup".to_string();
             Err(Error::CGroupFailedToCopyParent(e))
         }
         Err(e) => Err(e),
