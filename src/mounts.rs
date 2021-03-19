@@ -3,6 +3,8 @@ use crate::consts::*;
 use crate::errors::*;
 use crate::nix_ext::fchdir;
 use crate::selinux::setfilecon;
+use fs::{canonicalize, create_dir_all, remove_file, OpenOptions};
+use fs_err as fs;
 use nix::errno::Errno;
 use nix::fcntl::{open, OFlag};
 use nix::mount::MsFlags;
@@ -14,8 +16,6 @@ use nix::unistd::{Gid, Uid};
 use nix::NixPath;
 use oci::{LinuxDevice, LinuxDeviceType, Mount, Spec};
 use std::collections::HashMap;
-use fs_err as fs;
-use fs::{OpenOptions, canonicalize, create_dir_all, remove_file};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
