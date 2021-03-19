@@ -6,7 +6,8 @@ use num_traits::identities::Zero;
 use oci::LinuxDeviceType;
 use oci::{LinuxDeviceCgroup, LinuxResources, LinuxThrottleDevice};
 use std::collections::HashMap;
-use std::fs::{create_dir_all, remove_dir, File};
+use fs_err as fs;
+use fs::{create_dir_all, remove_dir, File};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::string::ToString;
 
