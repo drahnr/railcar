@@ -1,7 +1,7 @@
 use serde;
 use serde_json;
 
-use std::fs::File;
+use fs_err as fs;
 use std::io;
 
 use crate::errors::*;
@@ -19,14 +19,14 @@ pub fn to_writer<W: io::Write, T: serde::Serialize>(
 // }
 
 pub fn serialize<T: serde::Serialize>(obj: &T, path: &str) -> Result<()> {
-    let mut file = File::create(path)?;
+    let mut file = fs::File::create(path)?;
     Ok(serde_json::to_writer(&mut file, &obj)?)
 }
 
 pub fn deserialize<'de, T: serde::de::DeserializeOwned>(
     path: &str,
 ) -> Result<T> {
-    let file = File::open(path)?;
+    let file = fs::File::open(path)?;
     Ok(serde_json::from_reader(&file)?)
 }
 

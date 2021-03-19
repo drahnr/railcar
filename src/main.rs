@@ -45,7 +45,8 @@ use railcar::nix_ext::{clearenv, putenv, setgroups, setrlimit};
 use railcar::sync::Cond;
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::fs::{canonicalize, create_dir, create_dir_all, remove_dir_all, File};
+use fs_err as fs;
+use fs::{canonicalize, create_dir, create_dir_all, remove_dir_all, File};
 use std::io::{Read, Write};
 use std::os::unix::fs::symlink;
 use std::os::unix::io::{FromRawFd, RawFd};
@@ -282,7 +283,7 @@ fn run() -> Result<()> {
     // create empty log file to avoid warning
     let lpath = matches.value_of("log").unwrap_or_default();
     if lpath != "" {
-        std::fs::OpenOptions::new()
+        fs::OpenOptions::new()
             .create(true)
             .write(true)
             .open(lpath)?;
@@ -870,9 +871,9 @@ fn execute_hook(hook: &oci::Hook, state: &oci::State) -> Result<()> {
                 ForkResult::Parent { child } => {
                     close(rstdin).with_context(|| "could not close rstdin")?;
                     unsafe {
-                        // closes the file descriptor autmotaically
+                        // closes the file descriptor automatically
                         state
-                            .to_writer(File::from_raw_fd(wstdin))
+                            .to_writer(std::fs::File::from_raw_fd(wstdin))
                             .with_context(|| "could not write state")?;
                     }
                     let (exit_code, sig) = wait_for_child(child)?;

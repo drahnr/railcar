@@ -14,8 +14,8 @@ use nix::unistd::{Gid, Uid};
 use nix::NixPath;
 use oci::{LinuxDevice, LinuxDeviceType, Mount, Spec};
 use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::fs::{canonicalize, create_dir_all, remove_file};
+use fs_err as fs;
+use fs::{OpenOptions, canonicalize, create_dir_all, remove_file};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 

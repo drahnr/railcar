@@ -1,5 +1,5 @@
 use std::env;
-use std::fs::File;
+use fs_err as fs;
 use std::io::Read;
 use std::process::Command;
 // use std::path::{Path,PathBuf};
@@ -17,7 +17,7 @@ fn main() {
                         &std::str::from_utf8(&output.stdout).unwrap(),
                         &std::str::from_utf8(&output.stderr).unwrap()
                     );
-                    let mut f = File::open("libseccomp/config.log").unwrap();
+                    let mut f = fs::File::open("libseccomp/config.log").unwrap();
                     let mut result = String::new();
                     f.read_to_string(&mut result).unwrap();
                     println! {"{}", &result};

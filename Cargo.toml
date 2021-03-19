@@ -5,21 +5,24 @@ authors = ["Vishvananda Ishaya Abrams <vish.ishaya@oracle.com>"]
 build = "build.rs"
 edition = "2018"
 
+[build-dependencies]
+fs-err = "2.5"
+
 [dependencies]
 caps = "0.5"
 clap = "2"
-error-chain = "0.12"
+color-eyre = "0.5"
+fs-err = "2.5"
 thiserror = "1"
 libc = "0.2"
 log = { version = "0.4", features = ["release_max_level_info"] }
-nix = "0.19"
+nix = "0.20"
 num-traits = "0.2"
 oci = { path = "oci" }
 prctl = "1"
 scopeguard = "1"
 seccomp-sys = "0.1.3"
 lazy_static = "1.4"
-color-eyre = "0.5"
 
 [features]
 nightly = []
